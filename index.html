@@ -161,6 +161,8 @@
   .batch-preview { background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--muted); }
   .batch-preview strong { color: var(--accent); font-weight: normal; }
   .batch-dates { margin-top: 8px; font-size: 11px; color: var(--muted); line-height: 1.7; word-spacing: 0.1em; }
+  .batch-toggle { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; padding: 6px 2px; cursor: pointer; user-select: none; }
+  .batch-toggle input { accent-color: var(--accent); cursor: pointer; width: 16px; height: 16px; }
 
   .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--accent); color: #0a0c0f; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.25em; text-transform: uppercase; padding: 14px 28px; border: 1px solid var(--accent); box-shadow: 0 0 24px rgba(200,245,66,0.4); z-index: 200; opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease; pointer-events: none; white-space: nowrap; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -239,9 +241,10 @@
 
     <div class="section-title">Batch-oppføring (ordnede økter)</div>
     <div class="manual-form">
-      <div class="batch-hint">Skriv inn timer per økt i den rekkefølgen de skjedde — én per linje. Øktene fordeles jevnt mellom start- og sluttdato.</div>
-      <div class="manual-row"><label>Startdato</label><input type="date" id="batchStart" oninput="updateBatchPreview()"></div>
-      <div class="manual-row"><label>Sluttdato</label><input type="date" id="batchEnd" oninput="updateBatchPreview()"></div>
+      <div class="batch-hint" id="batchHint">Skriv inn timer per økt i den rekkefølgen de skjedde — én per linje. Øktene fordeles jevnt mellom start- og sluttdato.</div>
+      <label class="batch-toggle"><input type="checkbox" id="batchNoDates" onchange="toggleDateMode()"> Uten datoer (vis som «mai · økt N»)</label>
+      <div class="manual-row" id="batchStartRow"><label id="batchStartLabel">Startdato</label><input type="date" id="batchStart" oninput="updateBatchPreview()"></div>
+      <div class="manual-row" id="batchEndRow"><label>Sluttdato</label><input type="date" id="batchEnd" oninput="updateBatchPreview()"></div>
       <div class="manual-row"><label>Timelønn</label><input type="number" id="batchWage" min="0" step="1" placeholder="kr / time" oninput="updateBatchPreview()"></div>
       <div class="manual-row tall"><label>Timer</label><textarea id="batchHours" placeholder="6.5&#10;8&#10;7&#10;5.5&#10;..." oninput="updateBatchPreview()"></textarea></div>
       <div class="batch-preview" id="batchPreview" style="display:none;"></div>
@@ -424,10 +427,15 @@
   }
 
   function renderOversikt() {
-    const log = loadLog().sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+    const log = loadLog().sort((a, b) => {
+      const dateCmp = b.date.localeCompare(a.date);
+      if (dateCmp !== 0) return dateCmp;
+      if (a.monthOnly && b.monthOnly) return (a.order || 0) - (b.order || 0);
+      return b.id - a.id;
+    });
     const now = new Date();
     const wkStart = startOfWeek(now);
-    const moStart = startOfMonth(now);
+    const currentYM = now.getFullYear() + '-' + pad(now.getMonth() + 1);
 
     let weekKr=0, weekMs=0, monthKr=0, monthMs=0, totKr=0, totMs=0;
     log.forEach(e => {
@@ -435,8 +443,8 @@
       const ms = e.hours * 3600000;
       const ed = new Date(e.date + 'T00:00:00');
       totKr += earned; totMs += ms;
-      if (ed >= moStart) { monthKr += earned; monthMs += ms; }
-      if (ed >= wkStart) { weekKr += earned; weekMs += ms; }
+      if (e.date.slice(0, 7) === currentYM) { monthKr += earned; monthMs += ms; }
+      if (!e.monthOnly && ed >= wkStart) { weekKr += earned; weekMs += ms; }
     });
 
     document.getElementById('statWeek').textContent = fmtKr(weekKr);
@@ -467,9 +475,12 @@
     div.className = 'log-entry';
     const earned = e.hours * e.wage;
     const isConfirming = confirmDeleteId === e.id;
+    const dateLabel = e.monthOnly
+      ? `${monthLabel(e.date)} · økt ${e.order}`
+      : fmtDate(e.date);
     div.innerHTML = `
       <div>
-        <div class="log-date">${fmtDate(e.date)}</div>
+        <div class="log-date">${dateLabel}</div>
         <div class="log-meta">${e.hours.toFixed(2)} t · ${e.wage} kr/t</div>
       </div>
       <div class="log-earned">${fmtKr(earned)}</div>
@@ -487,8 +498,11 @@
   function buildEditForm(e) {
     const div = document.createElement('div');
     div.className = 'edit-form';
+    const dateRow = e.monthOnly
+      ? `<div class="edit-row"><label>Måned</label><div class="edit-locked">${monthLabel(e.date)} · økt ${e.order} (låst)</div></div>`
+      : `<div class="edit-row"><label>Dato</label><input type="date" id="editDate" value="${e.date}"></div>`;
     div.innerHTML = `
-      <div class="edit-row"><label>Dato</label><input type="date" id="editDate" value="${e.date}"></div>
+      ${dateRow}
       <div class="edit-row"><label>Timer</label><input type="number" id="editHours" min="0" step="0.25" value="${e.hours.toFixed(2)}"></div>
       <div class="edit-row"><label>Timelønn</label><div class="edit-locked">${e.wage} kr/t (låst)</div></div>
       <div class="edit-buttons">
@@ -504,7 +518,10 @@
     const log = loadLog();
     const e = log.find(x => x.id === id);
     if (e) {
-      e.date = document.getElementById('editDate').value || e.date;
+      if (!e.monthOnly) {
+        const dateInput = document.getElementById('editDate');
+        if (dateInput) e.date = dateInput.value || e.date;
+      }
       e.hours = Math.max(0, parseFloat(document.getElementById('editHours').value) || 0);
       saveLog(log);
     }
@@ -564,33 +581,56 @@
     return new Date(start.getTime() + offset * dayMs);
   }
 
+  function toggleDateMode() {
+    const noDates = document.getElementById('batchNoDates').checked;
+    document.getElementById('batchEndRow').style.display = noDates ? 'none' : '';
+    document.getElementById('batchStartLabel').textContent = noDates ? 'Måned' : 'Startdato';
+    document.getElementById('batchHint').textContent = noDates
+      ? 'Skriv inn timer per økt i rekkefølge — én per linje. Øktene knyttes ikke til datoer, kun måneden du velger.'
+      : 'Skriv inn timer per økt i den rekkefølgen de skjedde — én per linje. Øktene fordeles jevnt mellom start- og sluttdato.';
+    updateBatchPreview();
+  }
+
+  function monthLabel(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' });
+  }
+
   function updateBatchPreview() {
     const hours = parseBatchHours();
     const startStr = document.getElementById('batchStart').value;
+    const noDates = document.getElementById('batchNoDates').checked;
     const endStr = document.getElementById('batchEnd').value;
     const wage = Math.max(0, parseFloat(document.getElementById('batchWage').value) || 0);
     const preview = document.getElementById('batchPreview');
 
-    if (hours.length === 0 || !startStr || !endStr) {
+    if (hours.length === 0 || !startStr || (!noDates && !endStr)) {
       preview.style.display = 'none';
       return;
     }
-    if (endStr < startStr) {
+    if (!noDates && endStr < startStr) {
       preview.style.display = '';
       preview.innerHTML = `<div style="color:var(--danger)">Sluttdato må være lik eller etter startdato</div>`;
       return;
     }
 
-    const start = new Date(startStr + 'T00:00:00');
-    const end = new Date(endStr + 'T00:00:00');
     const totalHours = hours.reduce((a, b) => a + b, 0);
     const totalKr = totalHours * wage;
+    let items;
 
-    const items = hours.map((h, i) => {
-      const d = batchDateForIndex(start, end, i, hours.length);
-      const label = d.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' });
-      return `${label}: ${h}t`;
-    });
+    if (noDates) {
+      const start = new Date(startStr + 'T00:00:00');
+      const mLabel = start.toLocaleDateString('no-NO', { month: 'long', year: 'numeric' });
+      items = hours.map((h, i) => `${mLabel} · økt ${i + 1}: ${h}t`);
+    } else {
+      const start = new Date(startStr + 'T00:00:00');
+      const end = new Date(endStr + 'T00:00:00');
+      items = hours.map((h, i) => {
+        const d = batchDateForIndex(start, end, i, hours.length);
+        const label = d.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' });
+        return `${label}: ${h}t`;
+      });
+    }
 
     const summary = `${hours.length} ${hours.length === 1 ? 'økt' : 'økter'} · <strong>${totalHours.toFixed(2)} t</strong>` +
       (wage > 0 ? ` · <strong>${fmtKr(totalKr)}</strong>` : '');
@@ -605,32 +645,51 @@
   function saveBatch() {
     const startStr = document.getElementById('batchStart').value;
     const endStr = document.getElementById('batchEnd').value;
+    const noDates = document.getElementById('batchNoDates').checked;
     const wage = Math.max(0, parseFloat(document.getElementById('batchWage').value) || 0);
     const hours = parseBatchHours();
 
-    if (!startStr) { showToast('Velg startdato', 'warn'); return; }
-    if (!endStr) { showToast('Velg sluttdato', 'warn'); return; }
-    if (endStr < startStr) { showToast('Sluttdato må være etter startdato', 'warn'); return; }
+    if (!startStr) { showToast(noDates ? 'Velg måned' : 'Velg startdato', 'warn'); return; }
+    if (!noDates && !endStr) { showToast('Velg sluttdato', 'warn'); return; }
+    if (!noDates && endStr < startStr) { showToast('Sluttdato må være etter startdato', 'warn'); return; }
     if (wage <= 0) { showToast('Fyll inn timelønn', 'warn'); return; }
     if (hours.length === 0) { showToast('Skriv inn timer', 'warn'); return; }
 
-    const start = new Date(startStr + 'T00:00:00');
-    const end = new Date(endStr + 'T00:00:00');
     const log = loadLog();
     const now = Date.now();
     let totalHours = 0;
 
-    hours.forEach((h, i) => {
-      const d = batchDateForIndex(start, end, i, hours.length);
-      log.push({
-        id: now + i,
-        date: isoFromDate(d),
-        hours: h,
-        wage,
-        source: 'batch'
+    if (noDates) {
+      const start = new Date(startStr + 'T00:00:00');
+      const monthFirst = new Date(start.getFullYear(), start.getMonth(), 1);
+      const iso = isoFromDate(monthFirst);
+      hours.forEach((h, i) => {
+        log.push({
+          id: now + i,
+          date: iso,
+          hours: h,
+          wage,
+          source: 'batch',
+          monthOnly: true,
+          order: i + 1
+        });
+        totalHours += h;
       });
-      totalHours += h;
-    });
+    } else {
+      const start = new Date(startStr + 'T00:00:00');
+      const end = new Date(endStr + 'T00:00:00');
+      hours.forEach((h, i) => {
+        const d = batchDateForIndex(start, end, i, hours.length);
+        log.push({
+          id: now + i,
+          date: isoFromDate(d),
+          hours: h,
+          wage,
+          source: 'batch'
+        });
+        totalHours += h;
+      });
+    }
 
     saveLog(log);
     document.getElementById('batchHours').value = '';
