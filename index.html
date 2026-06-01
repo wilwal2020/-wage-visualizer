@@ -430,7 +430,7 @@
     const log = loadLog().sort((a, b) => {
       const dateCmp = b.date.localeCompare(a.date);
       if (dateCmp !== 0) return dateCmp;
-      if (a.monthOnly && b.monthOnly) return (a.order || 0) - (b.order || 0);
+      if (a.monthOnly && b.monthOnly) return (b.order || 0) - (a.order || 0);
       return b.id - a.id;
     });
     const now = new Date();
