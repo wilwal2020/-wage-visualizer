@@ -153,13 +153,14 @@
   .icon-btn.confirm { color: var(--danger); border-color: var(--danger); background: rgba(255,68,68,0.12); }
   .icon-btn.confirm:hover { background: var(--danger); color: #fff; }
 
-  .batch-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; max-height: 360px; overflow-y: auto; padding: 4px; background: var(--bg); border: 1px solid var(--border); }
-  .batch-row { display: grid; grid-template-columns: 1fr 110px 28px; gap: 10px; align-items: center; padding: 6px 10px; }
-  .batch-date { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text); letter-spacing: 0.05em; }
-  .batch-row input { font-size: 14px !important; padding: 6px 10px !important; text-align: right; color: var(--accent); }
-  .batch-unit { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
-  .batch-summary { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); text-align: right; padding: 6px 4px 2px; }
-  .batch-summary strong { color: var(--accent); font-weight: normal; }
+  .batch-hint { font-size: 11px; letter-spacing: 0.1em; color: var(--muted); line-height: 1.5; padding: 2px 0 4px; }
+  .manual-row.tall { align-items: start; }
+  .manual-row.tall label { padding-top: 12px; }
+  .manual-form textarea { flex: 1; width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 16px; padding: 10px 14px; outline: none; resize: vertical; letter-spacing: 0.05em; line-height: 1.6; min-height: 140px; transition: border-color 0.2s; }
+  .manual-form textarea:focus { border-color: var(--accent-dim); }
+  .batch-preview { background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--muted); }
+  .batch-preview strong { color: var(--accent); font-weight: normal; }
+  .batch-dates { margin-top: 8px; font-size: 11px; color: var(--muted); line-height: 1.7; word-spacing: 0.1em; }
 
   .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--accent); color: #0a0c0f; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.25em; text-transform: uppercase; padding: 14px 28px; border: 1px solid var(--accent); box-shadow: 0 0 24px rgba(200,245,66,0.4); z-index: 200; opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease; pointer-events: none; white-space: nowrap; }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -236,15 +237,14 @@
       <button class="btn btn-save" onclick="addManualEntry()">Lagre oppføring</button>
     </div>
 
-    <div class="section-title">Batch-oppføring (periode)</div>
+    <div class="section-title">Batch-oppføring (ordnede økter)</div>
     <div class="manual-form">
-      <div class="manual-row"><label>Fra dato</label><input type="date" id="batchFrom"></div>
-      <div class="manual-row"><label>Til dato</label><input type="date" id="batchTo"></div>
-      <div class="manual-row"><label>Timelønn</label><input type="number" id="batchWage" min="0" step="1" placeholder="kr / time" oninput="updateBatchSummary()"></div>
-      <button class="btn btn-reset" onclick="generateBatchRows()">Generer dager</button>
-      <div id="batchDays"></div>
-      <div class="batch-summary" id="batchSummary" style="display:none;"></div>
-      <button class="btn btn-save" id="batchSaveBtn" onclick="saveBatch()" style="display:none;">Lagre alle dager</button>
+      <div class="batch-hint">Skriv inn timer per økt i den rekkefølgen de skjedde — én per linje. Hver økt får en dato fortløpende fra startdatoen.</div>
+      <div class="manual-row"><label>Startdato</label><input type="date" id="batchStart" oninput="updateBatchPreview()"></div>
+      <div class="manual-row"><label>Timelønn</label><input type="number" id="batchWage" min="0" step="1" placeholder="kr / time" oninput="updateBatchPreview()"></div>
+      <div class="manual-row tall"><label>Timer</label><textarea id="batchHours" placeholder="6.5&#10;8&#10;7&#10;5.5&#10;..." oninput="updateBatchPreview()"></textarea></div>
+      <div class="batch-preview" id="batchPreview" style="display:none;"></div>
+      <button class="btn btn-save" onclick="saveBatch()">Lagre alle økter</button>
     </div>
 
     <div class="section-title">Logg</div>
@@ -541,86 +541,84 @@
     showToast(`Lagret · ${fmtKr(hours * wage)}`);
   }
 
-  function generateBatchRows() {
-    const from = document.getElementById('batchFrom').value;
-    const to = document.getElementById('batchTo').value;
-    if (!from || !to) { showToast('Velg fra- og til-dato', 'warn'); return; }
-    if (from > to) { showToast('Fra-dato må være før til-dato', 'warn'); return; }
-
-    const start = new Date(from + 'T00:00:00');
-    const end = new Date(to + 'T00:00:00');
-    const dayMs = 86400000;
-    const days = Math.round((end - start) / dayMs) + 1;
-    if (days > 366) { showToast('Maks 366 dager', 'warn'); return; }
-
-    const container = document.getElementById('batchDays');
-    const list = document.createElement('div');
-    list.className = 'batch-list';
-
-    for (let i = 0; i < days; i++) {
-      const d = new Date(start.getTime() + i * dayMs);
-      const iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
-      const label = d.toLocaleDateString('no-NO', { weekday: 'short', day: 'numeric', month: 'long' });
-      const row = document.createElement('div');
-      row.className = 'batch-row';
-      row.innerHTML = `
-        <span class="batch-date">${label}</span>
-        <input type="number" min="0" step="0.25" data-date="${iso}" placeholder="0" oninput="updateBatchSummary()">
-        <span class="batch-unit">t</span>`;
-      list.appendChild(row);
-    }
-
-    container.innerHTML = '';
-    container.appendChild(list);
-    document.getElementById('batchSaveBtn').style.display = '';
-    document.getElementById('batchSummary').style.display = '';
-    updateBatchSummary();
+  function parseBatchHours() {
+    const text = document.getElementById('batchHours').value;
+    return text
+      .split(/[\n,;]+/)
+      .map(s => s.trim().replace(',', '.'))
+      .filter(s => s.length > 0)
+      .map(s => parseFloat(s))
+      .filter(n => !isNaN(n) && n > 0);
   }
 
-  function updateBatchSummary() {
-    const inputs = document.querySelectorAll('#batchDays input');
+  function isoFromDate(d) {
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  function updateBatchPreview() {
+    const hours = parseBatchHours();
+    const startStr = document.getElementById('batchStart').value;
     const wage = Math.max(0, parseFloat(document.getElementById('batchWage').value) || 0);
-    let totalHours = 0, filledDays = 0;
-    inputs.forEach(input => {
-      const h = Math.max(0, parseFloat(input.value) || 0);
-      if (h > 0) { totalHours += h; filledDays++; }
+    const preview = document.getElementById('batchPreview');
+
+    if (hours.length === 0 || !startStr) {
+      preview.style.display = 'none';
+      return;
+    }
+
+    const start = new Date(startStr + 'T00:00:00');
+    const dayMs = 86400000;
+    const totalHours = hours.reduce((a, b) => a + b, 0);
+    const totalKr = totalHours * wage;
+
+    const items = hours.map((h, i) => {
+      const d = new Date(start.getTime() + i * dayMs);
+      const label = d.toLocaleDateString('no-NO', { day: 'numeric', month: 'short' });
+      return `${label}: ${h}t`;
     });
-    const earned = totalHours * wage;
-    document.getElementById('batchSummary').innerHTML =
-      `${filledDays} ${filledDays === 1 ? 'dag' : 'dager'} · <strong>${totalHours.toFixed(2)} t</strong>` +
-      (wage > 0 ? ` · <strong>${fmtKr(earned)}</strong>` : '');
+
+    const summary = `${hours.length} ${hours.length === 1 ? 'økt' : 'økter'} · <strong>${totalHours.toFixed(2)} t</strong>` +
+      (wage > 0 ? ` · <strong>${fmtKr(totalKr)}</strong>` : '');
+    const dates = items.length > 6
+      ? items.slice(0, 3).join('  ·  ') + '  …  ' + items.slice(-2).join('  ·  ')
+      : items.join('  ·  ');
+
+    preview.style.display = '';
+    preview.innerHTML = `<div>${summary}</div><div class="batch-dates">${dates}</div>`;
   }
 
   function saveBatch() {
+    const startStr = document.getElementById('batchStart').value;
     const wage = Math.max(0, parseFloat(document.getElementById('batchWage').value) || 0);
-    if (wage <= 0) { showToast('Fyll inn timelønn', 'warn'); return; }
+    const hours = parseBatchHours();
 
-    const inputs = document.querySelectorAll('#batchDays input');
+    if (!startStr) { showToast('Velg startdato', 'warn'); return; }
+    if (wage <= 0) { showToast('Fyll inn timelønn', 'warn'); return; }
+    if (hours.length === 0) { showToast('Skriv inn timer', 'warn'); return; }
+
+    const start = new Date(startStr + 'T00:00:00');
+    const dayMs = 86400000;
     const log = loadLog();
-    let count = 0, totalHours = 0;
-    inputs.forEach((input, i) => {
-      const hours = Math.max(0, parseFloat(input.value) || 0);
-      if (hours > 0) {
-        log.push({
-          id: Date.now() + i,
-          date: input.dataset.date,
-          hours,
-          wage,
-          source: 'batch'
-        });
-        count++;
-        totalHours += hours;
-      }
+    const now = Date.now();
+    let totalHours = 0;
+
+    hours.forEach((h, i) => {
+      const d = new Date(start.getTime() + i * dayMs);
+      log.push({
+        id: now + i,
+        date: isoFromDate(d),
+        hours: h,
+        wage,
+        source: 'batch'
+      });
+      totalHours += h;
     });
-    if (count === 0) { showToast('Ingen timer registrert', 'warn'); return; }
+
     saveLog(log);
-    document.getElementById('batchDays').innerHTML = '';
-    document.getElementById('batchSaveBtn').style.display = 'none';
-    document.getElementById('batchSummary').style.display = 'none';
-    document.getElementById('batchFrom').value = '';
-    document.getElementById('batchTo').value = '';
+    document.getElementById('batchHours').value = '';
+    document.getElementById('batchPreview').style.display = 'none';
     renderOversikt();
-    showToast(`Lagret · ${count} ${count === 1 ? 'dag' : 'dager'} · ${fmtKr(totalHours * wage)}`);
+    showToast(`Lagret · ${hours.length} ${hours.length === 1 ? 'økt' : 'økter'} · ${fmtKr(totalHours * wage)}`);
   }
 
   // INIT
