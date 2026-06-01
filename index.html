@@ -123,6 +123,10 @@
   .stat-sub { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
 
   .section-title { font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); padding: 14px 0 10px; }
+  .section-title.collapsible { display: flex; justify-content: space-between; align-items: center; cursor: pointer; user-select: none; padding: 14px 14px 10px; background: var(--panel); border: 1px solid var(--border); margin-bottom: 2px; transition: color 0.15s, background 0.15s; }
+  .section-title.collapsible:hover { color: var(--text); background: #14171d; }
+  .section-title.collapsible.open { color: var(--accent-dim); border-color: var(--accent-dim); margin-bottom: 0; }
+  .section-title .chevron { font-family: 'Share Tech Mono', monospace; font-size: 16px; color: inherit; width: 18px; text-align: center; }
 
   .manual-form { background: var(--panel); border: 1px solid var(--border); padding: 18px; margin-bottom: 12px; display: grid; gap: 10px; }
   .manual-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
@@ -231,16 +235,22 @@
       <div class="stat-card"><div class="stat-label">Snitt per økt</div><div class="stat-value neutral" id="statAvg">0.0 t</div><div class="stat-sub" id="statAvgCount">0 økter</div></div>
     </div>
 
-    <div class="section-title">Legg til manuelt</div>
-    <div class="manual-form">
+    <div class="section-title collapsible" id="manualToggle" onclick="toggleSection('manual')">
+      <span>Legg til manuelt</span>
+      <span class="chevron">+</span>
+    </div>
+    <div class="manual-form" id="manualForm" style="display:none;">
       <div class="manual-row"><label>Dato</label><input type="date" id="manualDate"></div>
       <div class="manual-row"><label>Timer</label><input type="number" id="manualHours" min="0" step="0.25" placeholder="0"></div>
       <div class="manual-row"><label>Timelønn</label><input type="number" id="manualWage" min="0" step="1" placeholder="kr / time"></div>
       <button class="btn btn-save" onclick="addManualEntry()">Lagre oppføring</button>
     </div>
 
-    <div class="section-title">Batch-oppføring (ordnede økter)</div>
-    <div class="manual-form">
+    <div class="section-title collapsible" id="batchToggle" onclick="toggleSection('batch')">
+      <span>Batch-oppføring (ordnede økter)</span>
+      <span class="chevron">+</span>
+    </div>
+    <div class="manual-form" id="batchForm" style="display:none;">
       <div class="batch-hint" id="batchHint">Skriv inn timer per økt i den rekkefølgen de skjedde — én per linje. Øktene fordeles jevnt mellom start- og sluttdato.</div>
       <label class="batch-toggle"><input type="checkbox" id="batchNoDates" onchange="toggleDateMode()"> Uten datoer (vis som «mai · økt N»)</label>
       <div class="manual-row" id="batchStartRow"><label id="batchStartLabel">Startdato</label><input type="date" id="batchStart" oninput="updateBatchPreview()"></div>
@@ -579,6 +589,16 @@
     const totalDays = Math.round((end - start) / dayMs);
     const offset = Math.round(i * totalDays / (n - 1));
     return new Date(start.getTime() + offset * dayMs);
+  }
+
+  function toggleSection(name) {
+    const form = document.getElementById(name + 'Form');
+    const toggle = document.getElementById(name + 'Toggle');
+    const chevron = toggle.querySelector('.chevron');
+    const isOpen = form.style.display !== 'none';
+    form.style.display = isOpen ? 'none' : '';
+    toggle.classList.toggle('open', !isOpen);
+    chevron.textContent = isOpen ? '+' : '−';
   }
 
   function toggleDateMode() {
