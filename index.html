@@ -136,15 +136,29 @@
 
   .log-list { display: flex; flex-direction: column; gap: 2px; }
   .log-empty { background: var(--panel); border: 1px solid var(--border); padding: 30px; text-align: center; color: var(--muted); font-size: 14px; letter-spacing: 0.1em; }
-  .log-entry { background: var(--panel); border: 1px solid var(--border); padding: 14px 16px; display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; font-family: 'Share Tech Mono', monospace; animation: slideIn 0.3s ease; }
+  .log-entry { background: var(--panel); border: 1px solid var(--border); padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px 16px; align-items: center; font-family: 'Share Tech Mono', monospace; animation: slideIn 0.3s ease; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .log-entry:hover { background: #14171d; }
+  .log-entry.selected { border-color: var(--accent-dim); background: rgba(200,245,66,0.06); }
+  .log-entry.selected:hover { background: rgba(200,245,66,0.09); }
   @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  .log-main { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
   .log-date { font-size: 14px; color: var(--text); }
-  .log-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
-  .log-earned { font-size: 18px; color: var(--accent); text-align: right; }
-  .log-actions { display: flex; gap: 6px; }
+  .log-sub { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .log-figures { display: flex; gap: 18px; align-items: baseline; }
+  .log-hours, .log-earned { font-family: 'Share Tech Mono', monospace; font-size: 20px; letter-spacing: 0.02em; line-height: 1; white-space: nowrap; text-align: right; }
+  .log-hours { color: var(--text); }
+  .log-earned { color: var(--accent); }
   .icon-btn { background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 8px 12px; cursor: pointer; transition: all 0.15s; }
   .icon-btn:hover { color: var(--text); border-color: var(--muted); }
   .icon-btn.del:hover { color: var(--danger); border-color: var(--danger); }
+
+  @media (max-width: 500px) {
+    .log-entry { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main edit" "figures figures"; gap: 10px 12px; }
+    .log-main { grid-area: main; }
+    .log-figures { grid-area: figures; justify-content: flex-end; gap: 22px; padding-top: 2px; }
+    .log-entry > .icon-btn { grid-area: edit; align-self: start; }
+    .log-hours, .log-earned { font-size: 22px; }
+  }
 
   .edit-form { background: #14171d; border: 1px solid var(--accent-dim); padding: 16px; display: grid; gap: 10px; animation: slideIn 0.2s ease; }
   .edit-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
@@ -180,26 +194,25 @@
   .unpaid-card .unpaid-sub { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); }
   .unpaid-card.zero .unpaid-value { color: var(--accent-dim); }
 
-  /* Bigger hours in log + paid badge */
-  .log-entry { grid-template-columns: auto 1fr auto auto !important; }
-  .log-check { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; margin: 0; }
-  .log-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
-  .log-hours { font-family: 'Share Tech Mono', monospace; font-size: 18px; color: var(--text); letter-spacing: 0.02em; line-height: 1; }
-  .log-rate { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); }
+  /* Paid state */
   .paid-badge { display: inline-flex; align-items: center; font-family: 'Barlow Condensed', sans-serif; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-dim); border: 1px solid var(--accent-dim); padding: 2px 7px; font-weight: 700; }
   .log-entry.paid .log-earned { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
   .log-entry.paid { opacity: 0.78; }
+  .log-entry.paid.selected { opacity: 1; }
 
-  /* Selection bar */
-  .selection-bar { background: #14171d; border: 1px solid var(--accent-dim); padding: 12px 14px; margin-bottom: 2px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; animation: slideIn 0.2s ease; }
-  .selection-stats { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text); letter-spacing: 0.02em; }
+  /* Floating selection bar */
+  body.has-selection { padding-bottom: 140px; }
+  .selection-bar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); width: calc(100% - 32px); max-width: 560px; background: #14171d; border: 1px solid var(--accent); box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 28px rgba(200,245,66,0.18); padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; z-index: 150; animation: slideUp 0.22s ease; }
+  @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  .selection-stats { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text); letter-spacing: 0.02em; flex: 1; min-width: 140px; }
   .selection-stats strong { color: var(--accent); font-weight: normal; }
   .selection-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-  .sel-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; padding: 8px 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; transition: all 0.15s; }
+  .sel-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; padding: 9px 13px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; transition: all 0.15s; }
   .sel-btn:hover { border-color: var(--muted); }
   .sel-btn.primary { background: var(--accent-dim); color: #0a0c0f; border-color: var(--accent-dim); }
   .sel-btn.primary:hover { background: var(--accent); border-color: var(--accent); }
-  .sel-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+  .sel-btn.danger { color: var(--danger); border-color: rgba(255,68,68,0.4); }
+  .sel-btn.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
 
   /* Edit paid toggle */
   .edit-paid-toggle { display: flex; align-items: center; gap: 8px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; color: var(--text); cursor: pointer; padding: 6px 0; }
@@ -532,6 +545,7 @@
 
   function renderSelectionBar(log) {
     const bar = document.getElementById('selectionBar');
+    document.body.classList.toggle('has-selection', selectedIds.size > 0);
     if (selectedIds.size === 0) { bar.style.display = 'none'; return; }
     const selected = log.filter(e => selectedIds.has(e.id));
     const totalHours = selected.reduce((a, e) => a + e.hours, 0);
@@ -596,32 +610,29 @@
 
   function buildLogEntry(e) {
     const div = document.createElement('div');
-    div.className = 'log-entry' + (e.paid ? ' paid' : '');
-    const earned = e.hours * e.wage;
-    const isConfirming = confirmDeleteId === e.id;
     const isSelected = selectedIds.has(e.id);
+    div.className = 'log-entry' + (e.paid ? ' paid' : '') + (isSelected ? ' selected' : '');
+    const earned = e.hours * e.wage;
     const dateLabel = e.monthOnly
       ? `${monthLabel(e.date)} · økt ${e.order}`
       : fmtDate(e.date);
+    div.onclick = (ev) => {
+      if (ev.target.closest('.icon-btn')) return;
+      toggleSelect(e.id);
+    };
     div.innerHTML = `
-      <input type="checkbox" class="log-check" ${isSelected ? 'checked' : ''} onclick="toggleSelect(${e.id})">
-      <div>
+      <div class="log-main">
         <div class="log-date">${dateLabel}</div>
-        <div class="log-stats">
-          <span class="log-hours">${e.hours.toFixed(2)} t</span>
-          <span class="log-rate">${e.wage} kr/t</span>
+        <div class="log-sub">
+          <span>${e.wage} kr/t</span>
           ${e.paid ? '<span class="paid-badge">✓ Utbetalt</span>' : ''}
         </div>
       </div>
-      <div class="log-earned">${fmtKr(earned)}</div>
-      <div class="log-actions">
-        ${isConfirming
-          ? `<button class="icon-btn confirm" onclick="confirmDelete(${e.id})">Bekreft</button>
-             <button class="icon-btn" onclick="cancelDelete()">Avbryt</button>`
-          : `<button class="icon-btn" onclick="startEdit(${e.id})">Endre</button>
-             <button class="icon-btn del" onclick="askDelete(${e.id})">Slett</button>`
-        }
-      </div>`;
+      <div class="log-figures">
+        <span class="log-hours">${e.hours.toFixed(2)} t</span>
+        <span class="log-earned">${fmtKr(earned)}</span>
+      </div>
+      <button class="icon-btn" onclick="event.stopPropagation(); startEdit(${e.id})">Endre</button>`;
     return div;
   }
 
