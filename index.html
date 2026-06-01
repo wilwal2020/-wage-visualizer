@@ -149,6 +149,22 @@
   .edit-form input[type="date"] { color: var(--text); }
   .edit-locked { font-family: 'Share Tech Mono', monospace; font-size: 16px; color: var(--muted); padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); }
   .edit-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+
+  .icon-btn.confirm { color: var(--danger); border-color: var(--danger); background: rgba(255,68,68,0.12); }
+  .icon-btn.confirm:hover { background: var(--danger); color: #fff; }
+
+  .batch-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; max-height: 360px; overflow-y: auto; padding: 4px; background: var(--bg); border: 1px solid var(--border); }
+  .batch-row { display: grid; grid-template-columns: 1fr 110px 28px; gap: 10px; align-items: center; padding: 6px 10px; }
+  .batch-date { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text); letter-spacing: 0.05em; }
+  .batch-row input { font-size: 14px !important; padding: 6px 10px !important; text-align: right; color: var(--accent); }
+  .batch-unit { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; }
+  .batch-summary { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); text-align: right; padding: 6px 4px 2px; }
+  .batch-summary strong { color: var(--accent); font-weight: normal; }
+
+  .toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--accent); color: #0a0c0f; font-family: 'Barlow Condensed', sans-serif; font-weight: 700; font-size: 14px; letter-spacing: 0.25em; text-transform: uppercase; padding: 14px 28px; border: 1px solid var(--accent); box-shadow: 0 0 24px rgba(200,245,66,0.4); z-index: 200; opacity: 0; transition: opacity 0.25s ease, transform 0.25s ease; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .toast.warn { background: var(--warm); border-color: var(--warm); box-shadow: 0 0 24px rgba(245,166,35,0.4); }
+  .toast.danger { background: var(--danger); border-color: var(--danger); color: #fff; box-shadow: 0 0 24px rgba(255,68,68,0.4); }
 </style>
 </head>
 <body>
@@ -220,10 +236,23 @@
       <button class="btn btn-save" onclick="addManualEntry()">Lagre oppføring</button>
     </div>
 
+    <div class="section-title">Batch-oppføring (periode)</div>
+    <div class="manual-form">
+      <div class="manual-row"><label>Fra dato</label><input type="date" id="batchFrom"></div>
+      <div class="manual-row"><label>Til dato</label><input type="date" id="batchTo"></div>
+      <div class="manual-row"><label>Timelønn</label><input type="number" id="batchWage" min="0" step="1" placeholder="kr / time" oninput="updateBatchSummary()"></div>
+      <button class="btn btn-reset" onclick="generateBatchRows()">Generer dager</button>
+      <div id="batchDays"></div>
+      <div class="batch-summary" id="batchSummary" style="display:none;"></div>
+      <button class="btn btn-save" id="batchSaveBtn" onclick="saveBatch()" style="display:none;">Lagre alle dager</button>
+    </div>
+
     <div class="section-title">Logg</div>
     <div class="log-list" id="logList"></div>
   </div>
 </div>
+
+<div class="toast" id="toast"></div>
 
 <script>
   const STORE_KEY = 'wageLog_v1';
@@ -235,6 +264,8 @@
   let savedWage = 200;
   let raf = null;
   let editingId = null;
+  let confirmDeleteId = null;
+  let toastTimer = null;
 
   const display = document.getElementById('display');
   const earnedAmount = document.getElementById('earnedAmount');
@@ -251,6 +282,14 @@
     return { h: Math.floor(t/3600), m: Math.floor((t%3600)/60), s: t%60 };
   }
   function fmtKr(n) { return Math.round(n).toLocaleString('no-NO') + ' kr'; }
+
+  function showToast(msg, kind) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (kind ? ' ' + kind : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.classList.remove('show'); }, 2400);
+  }
 
   function loadLog() {
     try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
@@ -336,16 +375,19 @@
     if (elapsed <= 0) return;
     const log = loadLog();
     const now = new Date();
+    const hours = elapsed / 3600000;
+    const earned = hours * savedWage;
     log.push({
       id: Date.now(),
       date: now.toISOString().slice(0, 10),
-      hours: elapsed / 3600000,
+      hours,
       wage: savedWage,
       source: 'timer'
     });
     saveLog(log);
     resetTimer();
     renderOversikt();
+    showToast(`Lagret · ${fmtKr(earned)}`);
   }
 
   function resetTimer() {
@@ -423,6 +465,7 @@
     const div = document.createElement('div');
     div.className = 'log-entry';
     const earned = e.hours * e.wage;
+    const isConfirming = confirmDeleteId === e.id;
     div.innerHTML = `
       <div>
         <div class="log-date">${fmtDate(e.date)}</div>
@@ -430,8 +473,12 @@
       </div>
       <div class="log-earned">${fmtKr(earned)}</div>
       <div class="log-actions">
-        <button class="icon-btn" onclick="startEdit(${e.id})">Endre</button>
-        <button class="icon-btn del" onclick="deleteEntry(${e.id})">Slett</button>
+        ${isConfirming
+          ? `<button class="icon-btn confirm" onclick="confirmDelete(${e.id})">Bekreft</button>
+             <button class="icon-btn" onclick="cancelDelete()">Avbryt</button>`
+          : `<button class="icon-btn" onclick="startEdit(${e.id})">Endre</button>
+             <button class="icon-btn del" onclick="askDelete(${e.id})">Slett</button>`
+        }
       </div>`;
     return div;
   }
@@ -450,7 +497,7 @@
     return div;
   }
 
-  function startEdit(id) { editingId = id; renderOversikt(); }
+  function startEdit(id) { editingId = id; confirmDeleteId = null; renderOversikt(); }
   function cancelEdit() { editingId = null; renderOversikt(); }
   function saveEdit(id) {
     const log = loadLog();
@@ -462,23 +509,118 @@
     }
     editingId = null;
     renderOversikt();
+    showToast('Endringer lagret');
   }
-  function deleteEntry(id) {
-    saveLog(loadLog().filter(x => x.id !== id));
+  function askDelete(id) {
+    confirmDeleteId = id;
     if (editingId === id) editingId = null;
     renderOversikt();
+  }
+  function cancelDelete() {
+    confirmDeleteId = null;
+    renderOversikt();
+  }
+  function confirmDelete(id) {
+    saveLog(loadLog().filter(x => x.id !== id));
+    if (editingId === id) editingId = null;
+    confirmDeleteId = null;
+    renderOversikt();
+    showToast('Slettet', 'danger');
   }
 
   function addManualEntry() {
     const date = document.getElementById('manualDate').value;
     const hours = Math.max(0, parseFloat(document.getElementById('manualHours').value) || 0);
     const wage = Math.max(0, parseFloat(document.getElementById('manualWage').value) || 0);
-    if (!date || hours <= 0 || wage <= 0) { alert('Fyll inn dato, timer og timelønn.'); return; }
+    if (!date || hours <= 0 || wage <= 0) { showToast('Fyll inn dato, timer og lønn', 'warn'); return; }
     const log = loadLog();
     log.push({ id: Date.now(), date, hours, wage, source: 'manual' });
     saveLog(log);
     document.getElementById('manualHours').value = '';
     renderOversikt();
+    showToast(`Lagret · ${fmtKr(hours * wage)}`);
+  }
+
+  function generateBatchRows() {
+    const from = document.getElementById('batchFrom').value;
+    const to = document.getElementById('batchTo').value;
+    if (!from || !to) { showToast('Velg fra- og til-dato', 'warn'); return; }
+    if (from > to) { showToast('Fra-dato må være før til-dato', 'warn'); return; }
+
+    const start = new Date(from + 'T00:00:00');
+    const end = new Date(to + 'T00:00:00');
+    const dayMs = 86400000;
+    const days = Math.round((end - start) / dayMs) + 1;
+    if (days > 366) { showToast('Maks 366 dager', 'warn'); return; }
+
+    const container = document.getElementById('batchDays');
+    const list = document.createElement('div');
+    list.className = 'batch-list';
+
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start.getTime() + i * dayMs);
+      const iso = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+      const label = d.toLocaleDateString('no-NO', { weekday: 'short', day: 'numeric', month: 'long' });
+      const row = document.createElement('div');
+      row.className = 'batch-row';
+      row.innerHTML = `
+        <span class="batch-date">${label}</span>
+        <input type="number" min="0" step="0.25" data-date="${iso}" placeholder="0" oninput="updateBatchSummary()">
+        <span class="batch-unit">t</span>`;
+      list.appendChild(row);
+    }
+
+    container.innerHTML = '';
+    container.appendChild(list);
+    document.getElementById('batchSaveBtn').style.display = '';
+    document.getElementById('batchSummary').style.display = '';
+    updateBatchSummary();
+  }
+
+  function updateBatchSummary() {
+    const inputs = document.querySelectorAll('#batchDays input');
+    const wage = Math.max(0, parseFloat(document.getElementById('batchWage').value) || 0);
+    let totalHours = 0, filledDays = 0;
+    inputs.forEach(input => {
+      const h = Math.max(0, parseFloat(input.value) || 0);
+      if (h > 0) { totalHours += h; filledDays++; }
+    });
+    const earned = totalHours * wage;
+    document.getElementById('batchSummary').innerHTML =
+      `${filledDays} ${filledDays === 1 ? 'dag' : 'dager'} · <strong>${totalHours.toFixed(2)} t</strong>` +
+      (wage > 0 ? ` · <strong>${fmtKr(earned)}</strong>` : '');
+  }
+
+  function saveBatch() {
+    const wage = Math.max(0, parseFloat(document.getElementById('batchWage').value) || 0);
+    if (wage <= 0) { showToast('Fyll inn timelønn', 'warn'); return; }
+
+    const inputs = document.querySelectorAll('#batchDays input');
+    const log = loadLog();
+    let count = 0, totalHours = 0;
+    inputs.forEach((input, i) => {
+      const hours = Math.max(0, parseFloat(input.value) || 0);
+      if (hours > 0) {
+        log.push({
+          id: Date.now() + i,
+          date: input.dataset.date,
+          hours,
+          wage,
+          source: 'batch'
+        });
+        count++;
+        totalHours += hours;
+      }
+    });
+    if (count === 0) { showToast('Ingen timer registrert', 'warn'); return; }
+    saveLog(log);
+    document.getElementById('batchDays').innerHTML = '';
+    document.getElementById('batchSaveBtn').style.display = 'none';
+    document.getElementById('batchSummary').style.display = 'none';
+    document.getElementById('batchFrom').value = '';
+    document.getElementById('batchTo').value = '';
+    renderOversikt();
+    showToast(`Lagret · ${count} ${count === 1 ? 'dag' : 'dager'} · ${fmtKr(totalHours * wage)}`);
   }
 
   // INIT
