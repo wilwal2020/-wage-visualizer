@@ -136,7 +136,7 @@
 
   .log-list { display: flex; flex-direction: column; gap: 2px; }
   .log-empty { background: var(--panel); border: 1px solid var(--border); padding: 30px; text-align: center; color: var(--muted); font-size: 14px; letter-spacing: 0.1em; }
-  .log-entry { background: var(--panel); border: 1px solid var(--border); padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 12px 16px; align-items: center; font-family: 'Share Tech Mono', monospace; animation: slideIn 0.3s ease; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .log-entry { background: var(--panel); border: 1px solid var(--border); padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; align-items: center; font-family: 'Share Tech Mono', monospace; animation: slideIn 0.3s ease; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
   .log-entry:hover { background: #14171d; }
   .log-entry.selected { border-color: var(--accent-dim); background: rgba(200,245,66,0.06); }
   .log-entry.selected:hover { background: rgba(200,245,66,0.09); }
@@ -153,10 +153,10 @@
   .icon-btn.del:hover { color: var(--danger); border-color: var(--danger); }
 
   @media (max-width: 500px) {
-    .log-entry { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "main edit" "figures figures"; gap: 10px 12px; }
+    .log-entry { grid-template-columns: minmax(0, 1fr); grid-template-areas: "main" "figures"; gap: 10px; }
     .log-main { grid-area: main; }
     .log-figures { grid-area: figures; justify-content: flex-end; gap: 22px; padding-top: 2px; }
-    .log-entry > .icon-btn { grid-area: edit; align-self: start; }
+    .log-date .d-month { display: block; }
     .log-hours, .log-earned { font-size: 22px; }
   }
 
@@ -557,14 +557,22 @@
     bar.style.display = '';
     bar.innerHTML = `
       <div class="selection-stats">
-        ${selected.length} valgt · <strong>${totalHours.toFixed(2)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && hasPaid ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
+        ${selected.length} valgt · <strong>${totalHours.toFixed(1)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && hasPaid ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
       </div>
       <div class="selection-actions">
+        ${selected.length === 1 ? '<button class="sel-btn" onclick="bulkEdit()">Endre</button>' : ''}
         ${hasUnpaid ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>' : ''}
         ${hasPaid ? '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>' : ''}
         <button class="sel-btn danger" onclick="bulkDelete()">Slett</button>
         <button class="sel-btn" onclick="clearSelection()">Tøm valg</button>
       </div>`;
+  }
+
+  function bulkEdit() {
+    if (selectedIds.size !== 1) return;
+    const id = [...selectedIds][0];
+    selectedIds.clear();
+    startEdit(id);
   }
 
   function toggleSelect(id) {
@@ -605,7 +613,9 @@
 
   function fmtDate(iso) {
     const d = new Date(iso + 'T00:00:00');
-    return d.toLocaleDateString('no-NO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+    const dayPart = d.toLocaleDateString('no-NO', { weekday: 'short', day: '2-digit' });
+    const monthPart = d.toLocaleDateString('no-NO', { month: 'short', year: 'numeric' });
+    return `<span class="d-day">${dayPart}</span> <span class="d-month">${monthPart}</span>`;
   }
 
   function buildLogEntry(e) {
@@ -616,10 +626,7 @@
     const dateLabel = e.monthOnly
       ? `${monthLabel(e.date)} · økt ${e.order}`
       : fmtDate(e.date);
-    div.onclick = (ev) => {
-      if (ev.target.closest('.icon-btn')) return;
-      toggleSelect(e.id);
-    };
+    div.onclick = () => toggleSelect(e.id);
     div.innerHTML = `
       <div class="log-main">
         <div class="log-date">${dateLabel}</div>
@@ -629,10 +636,9 @@
         </div>
       </div>
       <div class="log-figures">
-        <span class="log-hours">${e.hours.toFixed(2)} t</span>
+        <span class="log-hours">${e.hours.toFixed(1)} t</span>
         <span class="log-earned">${fmtKr(earned)}</span>
-      </div>
-      <button class="icon-btn" onclick="event.stopPropagation(); startEdit(${e.id})">Endre</button>`;
+      </div>`;
     return div;
   }
 
