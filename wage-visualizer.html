@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lønnskalkulator</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c0f;
+    --panel: #111318;
+    --border: #1e2530;
+    --accent: #c8f542;
+    --accent-dim: #8aab20;
+    --text: #d6dce8;
+    --muted: #4a5568;
+    --danger: #ff4444;
+    --warm: #f5a623;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow Condensed', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px);
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  .corner {
+    position: fixed;
+    width: 60px;
+    height: 60px;
+    border-color: var(--border);
+    border-style: solid;
+    opacity: 0.5;
+    z-index: 1;
+  }
+  .corner.tl { top: 16px; left: 16px; border-width: 2px 0 0 2px; }
+  .corner.tr { top: 16px; right: 16px; border-width: 2px 2px 0 0; }
+  .corner.bl { bottom: 16px; left: 16px; border-width: 0 0 2px 2px; }
+  .corner.br { bottom: 16px; right: 16px; border-width: 0 2px 2px 0; }
+
+  .wrapper { width: 100%; max-width: 560px; z-index: 2; }
+
+  .header { display: flex; align-items: baseline; gap: 12px; margin-bottom: 20px; }
+  .header h1 { font-size: 13px; font-weight: 600; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); }
+  .header-line { flex: 1; height: 1px; background: var(--border); }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); transition: background 0.3s; }
+  .status-dot.active { background: var(--accent); box-shadow: 0 0 8px var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 2px; }
+  .tab { background: var(--panel); border: 1px solid var(--border); color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.25em; text-transform: uppercase; padding: 16px; cursor: pointer; transition: all 0.15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-color: var(--accent-dim); background: #14171d; }
+
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .input-section { background: var(--panel); border: 1px solid var(--border); border-top: none; padding: 24px; margin-bottom: 2px; }
+  .input-label { font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; display: block; }
+  .input-row { display: flex; align-items: stretch; }
+  .currency-tag { background: var(--border); color: var(--muted); font-family: 'Share Tech Mono', monospace; font-size: 14px; padding: 0 16px; display: flex; align-items: center; letter-spacing: 0.1em; border: 1px solid var(--border); border-right: none; }
+  input[type="number"], input[type="date"] { flex: 1; background: var(--bg); border: 1px solid var(--border); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 28px; padding: 14px 20px; outline: none; appearance: none; -moz-appearance: textfield; transition: border-color 0.2s; letter-spacing: 0.05em; width: 100%; }
+  input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+  input:focus { border-color: var(--accent-dim); }
+  input:disabled { opacity: 0.6; }
+  .per-hour { background: var(--border); color: var(--muted); font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; padding: 0 14px; display: flex; align-items: center; border: 1px solid var(--border); border-left: none; }
+
+  .display { background: var(--panel); border: 1px solid var(--border); border-top: none; padding: 36px 24px 28px; text-align: center; position: relative; overflow: hidden; }
+  .display::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--border); transition: background 0.5s; }
+  .display.running::before { background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+  .earned-label { font-size: 11px; letter-spacing: 0.3em; text-transform: uppercase; color: var(--muted); margin-bottom: 16px; }
+  .earned-amount { font-family: 'Share Tech Mono', monospace; font-size: 72px; line-height: 1; color: var(--text); transition: color 0.3s; letter-spacing: -0.02em; margin-bottom: 8px; }
+  .earned-amount.running { color: var(--accent); text-shadow: 0 0 30px rgba(200,245,66,0.2); }
+  .nok-suffix { font-size: 22px; color: var(--muted); margin-left: 6px; font-family: 'Share Tech Mono', monospace; }
+  .rate-strip { display: flex; justify-content: center; align-items: center; gap: 6px; margin-top: 6px; font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--muted); height: 20px; }
+  .rate-strip .rate-val { color: var(--accent-dim); transition: color 0.3s; }
+
+  .progress-wrap { background: var(--panel); border: 1px solid var(--border); border-top: none; height: 4px; overflow: hidden; margin-bottom: 2px; }
+  .progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.9s linear; box-shadow: 2px 0 8px var(--accent); }
+
+  .time-section { background: var(--panel); border: 1px solid var(--border); border-top: none; display: grid; grid-template-columns: 1fr 1px 1fr 1px 1fr; margin-bottom: 2px; }
+  .time-cell { padding: 16px 12px; text-align: center; }
+  .time-divider { background: var(--border); }
+  .time-value { font-family: 'Share Tech Mono', monospace; font-size: 28px; color: var(--text); line-height: 1; margin-bottom: 6px; }
+  .time-unit { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+
+  .controls { display: grid; gap: 2px; }
+  .controls.three { grid-template-columns: 1fr 1fr 1fr; }
+  .controls.two { grid-template-columns: 1fr auto; }
+  .btn { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; border: 1px solid var(--border); cursor: pointer; padding: 18px 20px; transition: all 0.15s; background: var(--panel); color: var(--text); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn-main { background: var(--accent); color: #0a0c0f; border-color: var(--accent); font-size: 16px; }
+  .btn-main:hover:not(:disabled) { background: #d8ff52; box-shadow: 0 0 20px rgba(200,245,66,0.3); }
+  .btn-main.running { background: var(--danger); border-color: var(--danger); color: #fff; }
+  .btn-main.running:hover { background: #ff6666; box-shadow: 0 0 20px rgba(255,68,68,0.3); }
+  .btn-save { background: var(--warm); color: #0a0c0f; border-color: var(--warm); }
+  .btn-save:hover:not(:disabled) { background: #ffb838; box-shadow: 0 0 20px rgba(245,166,35,0.3); }
+  .btn-reset { color: var(--muted); }
+  .btn-reset:hover { color: var(--text); border-color: var(--muted); }
+
+  .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; margin-bottom: 2px; }
+  .stat-card { background: var(--panel); border: 1px solid var(--border); border-top: none; padding: 18px 20px; }
+  .stat-label { font-size: 10px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .stat-value { font-family: 'Share Tech Mono', monospace; font-size: 26px; color: var(--accent); line-height: 1; }
+  .stat-value.neutral { color: var(--text); }
+  .stat-sub { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  .section-title { font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); padding: 14px 0 10px; }
+
+  .manual-form { background: var(--panel); border: 1px solid var(--border); padding: 18px; margin-bottom: 12px; display: grid; gap: 10px; }
+  .manual-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
+  .manual-row label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .manual-form input { font-size: 16px; padding: 10px 14px; }
+  .manual-form input[type="date"] { color: var(--text); }
+
+  .log-list { display: flex; flex-direction: column; gap: 2px; }
+  .log-empty { background: var(--panel); border: 1px solid var(--border); padding: 30px; text-align: center; color: var(--muted); font-size: 13px; letter-spacing: 0.1em; }
+  .log-entry { background: var(--panel); border: 1px solid var(--border); padding: 14px 16px; display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; font-family: 'Share Tech Mono', monospace; animation: slideIn 0.3s ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: translateX(0); } }
+  .log-date { font-size: 14px; color: var(--text); }
+  .log-meta { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .log-earned { font-size: 18px; color: var(--accent); text-align: right; }
+  .log-actions { display: flex; gap: 6px; }
+  .icon-btn { background: var(--bg); border: 1px solid var(--border); color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; padding: 8px 12px; cursor: pointer; transition: all 0.15s; }
+  .icon-btn:hover { color: var(--text); border-color: var(--muted); }
+  .icon-btn.del:hover { color: var(--danger); border-color: var(--danger); }
+
+  .edit-form { background: #14171d; border: 1px solid var(--accent-dim); padding: 16px; display: grid; gap: 10px; animation: slideIn 0.2s ease; }
+  .edit-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
+  .edit-row label { font-size: 11px; letter-spacing: 0.15em; text-transform: uppercase; color: var(--muted); }
+  .edit-form input { font-size: 16px; padding: 10px 14px; }
+  .edit-form input[type="date"] { color: var(--text); }
+  .edit-locked { font-family: 'Share Tech Mono', monospace; font-size: 16px; color: var(--muted); padding: 10px 14px; background: var(--bg); border: 1px solid var(--border); }
+  .edit-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="corner tl"></div>
+<div class="corner tr"></div>
+<div class="corner bl"></div>
+<div class="corner br"></div>
+
+<div class="wrapper">
+  <div class="header">
+    <h1>Lønnskalkulator</h1>
+    <div class="header-line"></div>
+    <div class="status-dot" id="statusDot"></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" id="tabTimer" onclick="switchTab('timer')">Timer</button>
+    <button class="tab" id="tabOversikt" onclick="switchTab('oversikt')">Oversikt</button>
+  </div>
+
+  <!-- TIMER PAGE -->
+  <div class="page active" id="pageTimer">
+    <div class="input-section">
+      <span class="input-label">Timelønn</span>
+      <div class="input-row">
+        <div class="currency-tag">NOK</div>
+        <input type="number" id="wageInput" value="200" min="0" step="1" />
+        <div class="per-hour">/ TIME</div>
+      </div>
+    </div>
+
+    <div class="display" id="display">
+      <div class="earned-label">Opptjent denne økten</div>
+      <div class="earned-amount" id="earnedAmount">0.0000<span class="nok-suffix">kr</span></div>
+      <div class="rate-strip"><span class="rate-val" id="rateVal">—</span><span>kr / sekund</span></div>
+    </div>
+
+    <div class="progress-wrap"><div class="progress-bar" id="progressBar"></div></div>
+
+    <div class="time-section">
+      <div class="time-cell"><div class="time-value" id="timeH">00</div><div class="time-unit">Timer</div></div>
+      <div class="time-divider"></div>
+      <div class="time-cell"><div class="time-value" id="timeM">00</div><div class="time-unit">Minutter</div></div>
+      <div class="time-divider"></div>
+      <div class="time-cell"><div class="time-value" id="timeS">00</div><div class="time-unit">Sekunder</div></div>
+    </div>
+
+    <div class="controls two" id="controls">
+      <button class="btn btn-main" id="startStopBtn" onclick="toggleTimer()">START</button>
+      <button class="btn btn-reset" onclick="resetTimer()">NULLSTILL</button>
+    </div>
+  </div>
+
+  <!-- OVERSIKT PAGE -->
+  <div class="page" id="pageOversikt">
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-label">Denne uken</div><div class="stat-value" id="statWeek">0 kr</div><div class="stat-sub" id="statWeekHrs">0.0 t</div></div>
+      <div class="stat-card"><div class="stat-label">Denne måneden</div><div class="stat-value" id="statMonth">0 kr</div><div class="stat-sub" id="statMonthHrs">0.0 t</div></div>
+      <div class="stat-card"><div class="stat-label">Totalt</div><div class="stat-value" id="statTotal">0 kr</div><div class="stat-sub" id="statTotalHrs">0.0 t</div></div>
+      <div class="stat-card"><div class="stat-label">Snitt per økt</div><div class="stat-value neutral" id="statAvg">0.0 t</div><div class="stat-sub" id="statAvgCount">0 økter</div></div>
+    </div>
+
+    <div class="section-title">Legg til manuelt</div>
+    <div class="manual-form">
+      <div class="manual-row"><label>Dato</label><input type="date" id="manualDate"></div>
+      <div class="manual-row"><label>Timer</label><input type="number" id="manualHours" min="0" step="0.25" placeholder="0"></div>
+      <div class="manual-row"><label>Timelønn</label><input type="number" id="manualWage" min="0" step="1" placeholder="kr / time"></div>
+      <button class="btn btn-save" onclick="addManualEntry()">Lagre oppføring</button>
+    </div>
+
+    <div class="section-title">Logg</div>
+    <div class="log-list" id="logList"></div>
+  </div>
+</div>
+
+<script>
+  const STORE_KEY = 'wageLog_v1';
+  const TIMER_KEY = 'wageTimer_v1';
+
+  let running = false;
+  let startTime = null;
+  let elapsed = 0;
+  let savedWage = 200;
+  let raf = null;
+  let editingId = null;
+
+  const display = document.getElementById('display');
+  const earnedAmount = document.getElementById('earnedAmount');
+  const statusDot = document.getElementById('statusDot');
+  const rateVal = document.getElementById('rateVal');
+  const progressBar = document.getElementById('progressBar');
+  const wageInput = document.getElementById('wageInput');
+  const controls = document.getElementById('controls');
+
+  function getWage() { return Math.max(0, parseFloat(wageInput.value) || 0); }
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function formatTime(ms) {
+    const t = Math.floor(ms / 1000);
+    return { h: Math.floor(t/3600), m: Math.floor((t%3600)/60), s: t%60 };
+  }
+  function fmtKr(n) { return Math.round(n).toLocaleString('no-NO') + ' kr'; }
+
+  function loadLog() {
+    try { return JSON.parse(localStorage.getItem(STORE_KEY)) || []; } catch { return []; }
+  }
+  function saveLog(log) { localStorage.setItem(STORE_KEY, JSON.stringify(log)); }
+
+  function saveTimerState() {
+    localStorage.setItem(TIMER_KEY, JSON.stringify({ running, startTime, elapsed, savedWage }));
+  }
+  function clearTimerState() { localStorage.removeItem(TIMER_KEY); }
+
+  function currentElapsed() { return running ? elapsed + (Date.now() - startTime) : elapsed; }
+
+  function renderTimer(totalMs) {
+    const perSec = savedWage / 3600;
+    const earned = (totalMs / 1000) * perSec;
+    earnedAmount.innerHTML = (earned < 1000 ? earned.toFixed(4) : earned.toFixed(2)) + '<span class="nok-suffix">kr</span>';
+    rateVal.textContent = perSec.toFixed(5);
+    const { h, m, s } = formatTime(totalMs);
+    document.getElementById('timeH').textContent = pad(h);
+    document.getElementById('timeM').textContent = pad(m);
+    document.getElementById('timeS').textContent = pad(s);
+    progressBar.style.width = (((totalMs % 3600000) / 3600000) * 100) + '%';
+  }
+  function tick() {
+    if (!running) return;
+    renderTimer(currentElapsed());
+    raf = requestAnimationFrame(tick);
+  }
+
+  function applyRunningUI() {
+    display.classList.add('running');
+    earnedAmount.classList.add('running');
+    statusDot.classList.add('active');
+    wageInput.disabled = true;
+    controls.className = 'controls two';
+    controls.innerHTML = `
+      <button class="btn btn-main running" onclick="toggleTimer()">STOPP</button>
+      <button class="btn btn-reset" onclick="resetTimer()">NULLSTILL</button>`;
+  }
+  function applyStoppedUI() {
+    display.classList.remove('running');
+    earnedAmount.classList.remove('running');
+    statusDot.classList.remove('active');
+    wageInput.disabled = false;
+    controls.className = 'controls three';
+    controls.innerHTML = `
+      <button class="btn btn-main" onclick="toggleTimer()">FORTSETT</button>
+      <button class="btn btn-save" onclick="saveSession()">LAGRE</button>
+      <button class="btn btn-reset" onclick="resetTimer()">NULLSTILL</button>`;
+  }
+  function applyIdleUI() {
+    display.classList.remove('running');
+    earnedAmount.classList.remove('running');
+    statusDot.classList.remove('active');
+    wageInput.disabled = false;
+    controls.className = 'controls two';
+    controls.innerHTML = `
+      <button class="btn btn-main" onclick="toggleTimer()">START</button>
+      <button class="btn btn-reset" onclick="resetTimer()">NULLSTILL</button>`;
+  }
+
+  function toggleTimer() {
+    if (!running) {
+      if (elapsed === 0) savedWage = getWage();
+      running = true;
+      startTime = Date.now();
+      applyRunningUI();
+      saveTimerState();
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(tick);
+    } else {
+      elapsed += Date.now() - startTime;
+      running = false;
+      cancelAnimationFrame(raf);
+      applyStoppedUI();
+      renderTimer(elapsed);
+      saveTimerState();
+    }
+  }
+
+  function saveSession() {
+    if (elapsed <= 0) return;
+    const log = loadLog();
+    const now = new Date();
+    log.push({
+      id: Date.now(),
+      date: now.toISOString().slice(0, 10),
+      hours: elapsed / 3600000,
+      wage: savedWage,
+      source: 'timer'
+    });
+    saveLog(log);
+    resetTimer();
+    renderOversikt();
+  }
+
+  function resetTimer() {
+    running = false;
+    cancelAnimationFrame(raf);
+    elapsed = 0;
+    startTime = null;
+    clearTimerState();
+    applyIdleUI();
+    renderTimer(0);
+    earnedAmount.innerHTML = '0.0000<span class="nok-suffix">kr</span>';
+    rateVal.textContent = '—';
+  }
+
+  function switchTab(name) {
+    document.getElementById('tabTimer').classList.toggle('active', name === 'timer');
+    document.getElementById('tabOversikt').classList.toggle('active', name === 'oversikt');
+    document.getElementById('pageTimer').classList.toggle('active', name === 'timer');
+    document.getElementById('pageOversikt').classList.toggle('active', name === 'oversikt');
+    if (name === 'oversikt') renderOversikt();
+  }
+
+  function startOfWeek(d) {
+    const date = new Date(d);
+    const day = (date.getDay() + 6) % 7;
+    date.setHours(0,0,0,0);
+    date.setDate(date.getDate() - day);
+    return date;
+  }
+  function startOfMonth(d) {
+    const date = new Date(d);
+    return new Date(date.getFullYear(), date.getMonth(), 1);
+  }
+
+  function renderOversikt() {
+    const log = loadLog().sort((a,b) => b.date.localeCompare(a.date) || b.id - a.id);
+    const now = new Date();
+    const wkStart = startOfWeek(now);
+    const moStart = startOfMonth(now);
+
+    let weekKr=0, weekMs=0, monthKr=0, monthMs=0, totKr=0, totMs=0;
+    log.forEach(e => {
+      const earned = e.hours * e.wage;
+      const ms = e.hours * 3600000;
+      const ed = new Date(e.date + 'T00:00:00');
+      totKr += earned; totMs += ms;
+      if (ed >= moStart) { monthKr += earned; monthMs += ms; }
+      if (ed >= wkStart) { weekKr += earned; weekMs += ms; }
+    });
+
+    document.getElementById('statWeek').textContent = fmtKr(weekKr);
+    document.getElementById('statWeekHrs').textContent = (weekMs/3600000).toFixed(1) + ' t';
+    document.getElementById('statMonth').textContent = fmtKr(monthKr);
+    document.getElementById('statMonthHrs').textContent = (monthMs/3600000).toFixed(1) + ' t';
+    document.getElementById('statTotal').textContent = fmtKr(totKr);
+    document.getElementById('statTotalHrs').textContent = (totMs/3600000).toFixed(1) + ' t';
+    document.getElementById('statAvg').textContent = log.length ? (totMs/3600000/log.length).toFixed(1) + ' t' : '0.0 t';
+    document.getElementById('statAvgCount').textContent = log.length + (log.length === 1 ? ' økt' : ' økter');
+
+    const list = document.getElementById('logList');
+    if (!log.length) {
+      list.innerHTML = '<div class="log-empty">Ingen oppføringer ennå</div>';
+      return;
+    }
+    list.innerHTML = '';
+    log.forEach(e => list.appendChild(e.id === editingId ? buildEditForm(e) : buildLogEntry(e)));
+  }
+
+  function fmtDate(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString('no-NO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function buildLogEntry(e) {
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    const earned = e.hours * e.wage;
+    div.innerHTML = `
+      <div>
+        <div class="log-date">${fmtDate(e.date)}</div>
+        <div class="log-meta">${e.hours.toFixed(2)} t · ${e.wage} kr/t</div>
+      </div>
+      <div class="log-earned">${fmtKr(earned)}</div>
+      <div class="log-actions">
+        <button class="icon-btn" onclick="startEdit(${e.id})">Endre</button>
+        <button class="icon-btn del" onclick="deleteEntry(${e.id})">Slett</button>
+      </div>`;
+    return div;
+  }
+
+  function buildEditForm(e) {
+    const div = document.createElement('div');
+    div.className = 'edit-form';
+    div.innerHTML = `
+      <div class="edit-row"><label>Dato</label><input type="date" id="editDate" value="${e.date}"></div>
+      <div class="edit-row"><label>Timer</label><input type="number" id="editHours" min="0" step="0.25" value="${e.hours.toFixed(2)}"></div>
+      <div class="edit-row"><label>Timelønn</label><div class="edit-locked">${e.wage} kr/t (låst)</div></div>
+      <div class="edit-buttons">
+        <button class="btn btn-save" onclick="saveEdit(${e.id})">Lagre</button>
+        <button class="btn btn-reset" onclick="cancelEdit()">Avbryt</button>
+      </div>`;
+    return div;
+  }
+
+  function startEdit(id) { editingId = id; renderOversikt(); }
+  function cancelEdit() { editingId = null; renderOversikt(); }
+  function saveEdit(id) {
+    const log = loadLog();
+    const e = log.find(x => x.id === id);
+    if (e) {
+      e.date = document.getElementById('editDate').value || e.date;
+      e.hours = Math.max(0, parseFloat(document.getElementById('editHours').value) || 0);
+      saveLog(log);
+    }
+    editingId = null;
+    renderOversikt();
+  }
+  function deleteEntry(id) {
+    saveLog(loadLog().filter(x => x.id !== id));
+    if (editingId === id) editingId = null;
+    renderOversikt();
+  }
+
+  function addManualEntry() {
+    const date = document.getElementById('manualDate').value;
+    const hours = Math.max(0, parseFloat(document.getElementById('manualHours').value) || 0);
+    const wage = Math.max(0, parseFloat(document.getElementById('manualWage').value) || 0);
+    if (!date || hours <= 0 || wage <= 0) { alert('Fyll inn dato, timer og timelønn.'); return; }
+    const log = loadLog();
+    log.push({ id: Date.now(), date, hours, wage, source: 'manual' });
+    saveLog(log);
+    document.getElementById('manualHours').value = '';
+    renderOversikt();
+  }
+
+  // INIT
+  document.getElementById('manualDate').value = new Date().toISOString().slice(0,10);
+  (function loadTimerState() {
+    try {
+      const s = JSON.parse(localStorage.getItem(TIMER_KEY));
+      if (!s) return;
+      running = s.running; startTime = s.startTime; elapsed = s.elapsed; savedWage = s.savedWage || 200;
+      wageInput.value = savedWage;
+      if (running) { applyRunningUI(); raf = requestAnimationFrame(tick); }
+      else if (elapsed > 0) { applyStoppedUI(); renderTimer(elapsed); }
+    } catch {}
+  })();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && running) { cancelAnimationFrame(raf); raf = requestAnimationFrame(tick); renderTimer(currentElapsed()); }
+  });
+</script>
+</body>
+</html>
