@@ -172,6 +172,38 @@
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.warn { background: var(--warm); border-color: var(--warm); box-shadow: 0 0 24px rgba(245,166,35,0.4); }
   .toast.danger { background: var(--danger); border-color: var(--danger); color: #fff; box-shadow: 0 0 24px rgba(255,68,68,0.4); }
+
+  /* Unpaid headline card */
+  .unpaid-card { background: var(--panel); border: 1px solid var(--border); padding: 18px 22px; margin-bottom: 2px; display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+  .unpaid-card .unpaid-label { font-size: 12px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+  .unpaid-card .unpaid-value { font-family: 'Share Tech Mono', monospace; font-size: 32px; color: var(--warm); letter-spacing: -0.01em; line-height: 1; }
+  .unpaid-card .unpaid-sub { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); }
+  .unpaid-card.zero .unpaid-value { color: var(--accent-dim); }
+
+  /* Bigger hours in log + paid badge */
+  .log-entry { grid-template-columns: auto 1fr auto auto !important; }
+  .log-check { width: 18px; height: 18px; flex-shrink: 0; accent-color: var(--accent); cursor: pointer; margin: 0; }
+  .log-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+  .log-hours { font-family: 'Share Tech Mono', monospace; font-size: 18px; color: var(--text); letter-spacing: 0.02em; line-height: 1; }
+  .log-rate { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); }
+  .paid-badge { display: inline-flex; align-items: center; font-family: 'Barlow Condensed', sans-serif; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--accent-dim); border: 1px solid var(--accent-dim); padding: 2px 7px; font-weight: 700; }
+  .log-entry.paid .log-earned { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+  .log-entry.paid { opacity: 0.78; }
+
+  /* Selection bar */
+  .selection-bar { background: #14171d; border: 1px solid var(--accent-dim); padding: 12px 14px; margin-bottom: 2px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; animation: slideIn 0.2s ease; }
+  .selection-stats { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text); letter-spacing: 0.02em; }
+  .selection-stats strong { color: var(--accent); font-weight: normal; }
+  .selection-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sel-btn { font-family: 'Barlow Condensed', sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; padding: 8px 12px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; transition: all 0.15s; }
+  .sel-btn:hover { border-color: var(--muted); }
+  .sel-btn.primary { background: var(--accent-dim); color: #0a0c0f; border-color: var(--accent-dim); }
+  .sel-btn.primary:hover { background: var(--accent); border-color: var(--accent); }
+  .sel-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* Edit paid toggle */
+  .edit-paid-toggle { display: flex; align-items: center; gap: 8px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; color: var(--text); cursor: pointer; padding: 6px 0; }
+  .edit-paid-toggle input { accent-color: var(--accent); width: 18px; height: 18px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -228,6 +260,14 @@
 
   <!-- OVERSIKT PAGE -->
   <div class="page" id="pageOversikt">
+    <div class="unpaid-card" id="unpaidCard">
+      <div>
+        <div class="unpaid-label">Ikke utbetalt</div>
+        <div class="unpaid-sub" id="unpaidSub">0 t</div>
+      </div>
+      <div class="unpaid-value" id="unpaidValue">0 kr</div>
+    </div>
+
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-label">Denne uken</div><div class="stat-value" id="statWeek">0 kr</div><div class="stat-sub" id="statWeekHrs">0.0 t</div></div>
       <div class="stat-card"><div class="stat-label">Denne måneden</div><div class="stat-value" id="statMonth">0 kr</div><div class="stat-sub" id="statMonthHrs">0.0 t</div></div>
@@ -262,6 +302,7 @@
     </div>
 
     <div class="section-title">Logg</div>
+    <div class="selection-bar" id="selectionBar" style="display:none;"></div>
     <div class="log-list" id="logList"></div>
   </div>
 </div>
@@ -280,6 +321,7 @@
   let editingId = null;
   let confirmDeleteId = null;
   let toastTimer = null;
+  let selectedIds = new Set();
 
   const display = document.getElementById('display');
   const earnedAmount = document.getElementById('earnedAmount');
@@ -443,11 +485,16 @@
       if (a.monthOnly && b.monthOnly) return (b.order || 0) - (a.order || 0);
       return b.id - a.id;
     });
+
+    // Prune selection of entries that no longer exist
+    const liveIds = new Set(log.map(e => e.id));
+    [...selectedIds].forEach(id => { if (!liveIds.has(id)) selectedIds.delete(id); });
+
     const now = new Date();
     const wkStart = startOfWeek(now);
     const currentYM = now.getFullYear() + '-' + pad(now.getMonth() + 1);
 
-    let weekKr=0, weekMs=0, monthKr=0, monthMs=0, totKr=0, totMs=0;
+    let weekKr=0, weekMs=0, monthKr=0, monthMs=0, totKr=0, totMs=0, unpaidKr=0, unpaidMs=0;
     log.forEach(e => {
       const earned = e.hours * e.wage;
       const ms = e.hours * 3600000;
@@ -455,7 +502,13 @@
       totKr += earned; totMs += ms;
       if (e.date.slice(0, 7) === currentYM) { monthKr += earned; monthMs += ms; }
       if (!e.monthOnly && ed >= wkStart) { weekKr += earned; weekMs += ms; }
+      if (!e.paid) { unpaidKr += earned; unpaidMs += ms; }
     });
+
+    const unpaidCard = document.getElementById('unpaidCard');
+    document.getElementById('unpaidValue').textContent = fmtKr(unpaidKr);
+    document.getElementById('unpaidSub').textContent = (unpaidMs/3600000).toFixed(1) + ' t';
+    unpaidCard.classList.toggle('zero', unpaidKr === 0);
 
     document.getElementById('statWeek').textContent = fmtKr(weekKr);
     document.getElementById('statWeekHrs').textContent = (weekMs/3600000).toFixed(1) + ' t';
@@ -466,6 +519,8 @@
     document.getElementById('statAvg').textContent = log.length ? (totMs/3600000/log.length).toFixed(1) + ' t' : '0.0 t';
     document.getElementById('statAvgCount').textContent = log.length + (log.length === 1 ? ' økt' : ' økter');
 
+    renderSelectionBar(log);
+
     const list = document.getElementById('logList');
     if (!log.length) {
       list.innerHTML = '<div class="log-empty">Ingen oppføringer ennå</div>';
@@ -475,6 +530,65 @@
     log.forEach(e => list.appendChild(e.id === editingId ? buildEditForm(e) : buildLogEntry(e)));
   }
 
+  function renderSelectionBar(log) {
+    const bar = document.getElementById('selectionBar');
+    if (selectedIds.size === 0) { bar.style.display = 'none'; return; }
+    const selected = log.filter(e => selectedIds.has(e.id));
+    const totalHours = selected.reduce((a, e) => a + e.hours, 0);
+    const totalKr = selected.reduce((a, e) => a + e.hours * e.wage, 0);
+    const unpaidKr = selected.filter(e => !e.paid).reduce((a, e) => a + e.hours * e.wage, 0);
+    const hasUnpaid = selected.some(e => !e.paid);
+    const hasPaid = selected.some(e => e.paid);
+
+    bar.style.display = '';
+    bar.innerHTML = `
+      <div class="selection-stats">
+        ${selected.length} valgt · <strong>${totalHours.toFixed(2)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && hasPaid ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
+      </div>
+      <div class="selection-actions">
+        ${hasUnpaid ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>' : ''}
+        ${hasPaid ? '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>' : ''}
+        <button class="sel-btn danger" onclick="bulkDelete()">Slett</button>
+        <button class="sel-btn" onclick="clearSelection()">Tøm valg</button>
+      </div>`;
+  }
+
+  function toggleSelect(id) {
+    if (selectedIds.has(id)) selectedIds.delete(id);
+    else selectedIds.add(id);
+    renderOversikt();
+  }
+
+  function clearSelection() {
+    selectedIds.clear();
+    renderOversikt();
+  }
+
+  function bulkMarkPaid(paid) {
+    const log = loadLog();
+    let count = 0;
+    log.forEach(e => {
+      if (selectedIds.has(e.id) && !!e.paid !== paid) {
+        e.paid = paid;
+        count++;
+      }
+    });
+    saveLog(log);
+    renderOversikt();
+    showToast(`${count} ${count === 1 ? 'oppføring' : 'oppføringer'} ${paid ? 'utbetalt' : 'ikke utbetalt'}`);
+  }
+
+  function bulkDelete() {
+    const count = selectedIds.size;
+    const log = loadLog().filter(x => !selectedIds.has(x.id));
+    saveLog(log);
+    selectedIds.clear();
+    if (confirmDeleteId && !log.some(x => x.id === confirmDeleteId)) confirmDeleteId = null;
+    if (editingId && !log.some(x => x.id === editingId)) editingId = null;
+    renderOversikt();
+    showToast(`${count} slettet`, 'danger');
+  }
+
   function fmtDate(iso) {
     const d = new Date(iso + 'T00:00:00');
     return d.toLocaleDateString('no-NO', { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' });
@@ -482,16 +596,22 @@
 
   function buildLogEntry(e) {
     const div = document.createElement('div');
-    div.className = 'log-entry';
+    div.className = 'log-entry' + (e.paid ? ' paid' : '');
     const earned = e.hours * e.wage;
     const isConfirming = confirmDeleteId === e.id;
+    const isSelected = selectedIds.has(e.id);
     const dateLabel = e.monthOnly
       ? `${monthLabel(e.date)} · økt ${e.order}`
       : fmtDate(e.date);
     div.innerHTML = `
+      <input type="checkbox" class="log-check" ${isSelected ? 'checked' : ''} onclick="toggleSelect(${e.id})">
       <div>
         <div class="log-date">${dateLabel}</div>
-        <div class="log-meta">${e.hours.toFixed(2)} t · ${e.wage} kr/t</div>
+        <div class="log-stats">
+          <span class="log-hours">${e.hours.toFixed(2)} t</span>
+          <span class="log-rate">${e.wage} kr/t</span>
+          ${e.paid ? '<span class="paid-badge">✓ Utbetalt</span>' : ''}
+        </div>
       </div>
       <div class="log-earned">${fmtKr(earned)}</div>
       <div class="log-actions">
@@ -515,6 +635,7 @@
       ${dateRow}
       <div class="edit-row"><label>Timer</label><input type="number" id="editHours" min="0" step="0.25" value="${e.hours.toFixed(2)}"></div>
       <div class="edit-row"><label>Timelønn</label><div class="edit-locked">${e.wage} kr/t (låst)</div></div>
+      <div class="edit-row"><label>Utbetalt</label><label class="edit-paid-toggle"><input type="checkbox" id="editPaid" ${e.paid ? 'checked' : ''}> Markert som utbetalt</label></div>
       <div class="edit-buttons">
         <button class="btn btn-save" onclick="saveEdit(${e.id})">Lagre</button>
         <button class="btn btn-reset" onclick="cancelEdit()">Avbryt</button>
@@ -533,6 +654,8 @@
         if (dateInput) e.date = dateInput.value || e.date;
       }
       e.hours = Math.max(0, parseFloat(document.getElementById('editHours').value) || 0);
+      const paidInput = document.getElementById('editPaid');
+      if (paidInput) e.paid = paidInput.checked;
       saveLog(log);
     }
     editingId = null;
