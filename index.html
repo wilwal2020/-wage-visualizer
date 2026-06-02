@@ -202,8 +202,8 @@
   .log-entry.paid.selected { opacity: 1; }
 
   /* Floating selection bar */
-  body.has-selection { padding-bottom: 140px; }
-  .selection-bar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); width: calc(100% - 32px); max-width: 560px; background: #14171d; border: 1px solid var(--accent); box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 28px rgba(200,245,66,0.18); padding: 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; z-index: 150; animation: slideUp 0.22s ease; }
+  body.has-selection { padding-bottom: 160px; }
+  .selection-bar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); width: calc(100% - 32px); max-width: 560px; background: #14171d; border: 1px solid var(--accent); box-shadow: 0 10px 40px rgba(0,0,0,0.5), 0 0 28px rgba(200,245,66,0.18); padding: 14px 44px 14px 16px; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; z-index: 150; animation: slideUp 0.22s ease; }
   @keyframes slideUp { from { opacity: 0; transform: translate(-50%, 20px); } to { opacity: 1; transform: translate(-50%, 0); } }
   .selection-stats { font-family: 'Share Tech Mono', monospace; font-size: 13px; color: var(--text); letter-spacing: 0.02em; flex: 1; min-width: 140px; }
   .selection-stats strong { color: var(--accent); font-weight: normal; }
@@ -214,6 +214,10 @@
   .sel-btn.primary:hover { background: var(--accent); border-color: var(--accent); }
   .sel-btn.danger { color: var(--danger); border-color: rgba(255,68,68,0.4); }
   .sel-btn.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .sel-close { position: absolute; top: 8px; right: 10px; background: transparent; border: none; color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: 22px; line-height: 1; padding: 4px 10px; cursor: pointer; transition: color 0.15s; }
+  .sel-close:hover { color: var(--text); }
+  .selection-details { width: 100%; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); line-height: 1.6; padding-top: 4px; border-top: 1px solid var(--border); }
+  .selection-details strong { color: var(--text); font-weight: normal; }
 
   /* Edit paid toggle */
   .edit-paid-toggle { display: flex; align-items: center; gap: 8px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; color: var(--text); cursor: pointer; padding: 6px 0; }
@@ -336,6 +340,9 @@
   let confirmDeleteId = null;
   let toastTimer = null;
   let selectedIds = new Set();
+  let sessionStartAt = null;
+  let pauses = [];
+  let pauseStart = null;
 
   const display = document.getElementById('display');
   const earnedAmount = document.getElementById('earnedAmount');
@@ -367,7 +374,7 @@
   function saveLog(log) { localStorage.setItem(STORE_KEY, JSON.stringify(log)); }
 
   function saveTimerState() {
-    localStorage.setItem(TIMER_KEY, JSON.stringify({ running, startTime, elapsed, savedWage }));
+    localStorage.setItem(TIMER_KEY, JSON.stringify({ running, startTime, elapsed, savedWage, sessionStartAt, pauses, pauseStart }));
   }
   function clearTimerState() { localStorage.removeItem(TIMER_KEY); }
 
@@ -424,15 +431,26 @@
 
   function toggleTimer() {
     if (!running) {
-      if (elapsed === 0) savedWage = getWage();
+      const now = Date.now();
+      if (elapsed === 0) {
+        savedWage = getWage();
+        sessionStartAt = now;
+        pauses = [];
+        pauseStart = null;
+      } else if (pauseStart) {
+        pauses.push({ from: pauseStart, to: now });
+        pauseStart = null;
+      }
       running = true;
-      startTime = Date.now();
+      startTime = now;
       applyRunningUI();
       saveTimerState();
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(tick);
     } else {
-      elapsed += Date.now() - startTime;
+      const now = Date.now();
+      elapsed += now - startTime;
+      pauseStart = now;
       running = false;
       cancelAnimationFrame(raf);
       applyStoppedUI();
@@ -447,17 +465,21 @@
     const now = new Date();
     const hours = elapsed / 3600000;
     const earned = hours * savedWage;
+    const endAt = pauseStart || Date.now();
     log.push({
       id: Date.now(),
       date: now.toISOString().slice(0, 10),
       hours,
       wage: savedWage,
-      source: 'timer'
+      source: 'timer',
+      startAt: sessionStartAt,
+      endAt,
+      pauses: pauses.slice()
     });
     saveLog(log);
     resetTimer();
     renderOversikt();
-    showToast(`Lagret · ${fmtKr(earned)}`);
+    showToast(`Lagret · ${hours.toFixed(1)} t · ${fmtKr(earned)}`);
   }
 
   function resetTimer() {
@@ -465,6 +487,9 @@
     cancelAnimationFrame(raf);
     elapsed = 0;
     startTime = null;
+    sessionStartAt = null;
+    pauses = [];
+    pauseStart = null;
     clearTimerState();
     applyIdleUI();
     renderTimer(0);
@@ -544,6 +569,35 @@
     log.forEach(e => list.appendChild(e.id === editingId ? buildEditForm(e) : buildLogEntry(e)));
   }
 
+  function fmtTimeOfDay(ms) {
+    const d = new Date(ms);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function fmtDuration(ms) {
+    const totalMin = Math.round(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    if (h > 0) return h + 't ' + m + 'm';
+    return m + 'm';
+  }
+
+  function fmtSessionDetails(e) {
+    if (!e.startAt || !e.endAt) return '';
+    const parts = [
+      `Startet <strong>${fmtTimeOfDay(e.startAt)}</strong>`,
+      `Sluttet <strong>${fmtTimeOfDay(e.endAt)}</strong>`
+    ];
+    const ps = e.pauses || [];
+    if (ps.length > 0) {
+      const total = ps.reduce((a, p) => a + (p.to - p.from), 0);
+      parts.push(`${ps.length} pause${ps.length === 1 ? '' : 'r'} (<strong>${fmtDuration(total)}</strong>)`);
+    } else {
+      parts.push('Ingen pauser');
+    }
+    return parts.join(' · ');
+  }
+
   function renderSelectionBar(log) {
     const bar = document.getElementById('selectionBar');
     document.body.classList.toggle('has-selection', selectedIds.size > 0);
@@ -553,20 +607,24 @@
     const totalKr = selected.reduce((a, e) => a + e.hours * e.wage, 0);
     const unpaidKr = selected.filter(e => !e.paid).reduce((a, e) => a + e.hours * e.wage, 0);
     const hasUnpaid = selected.some(e => !e.paid);
-    const hasPaid = selected.some(e => e.paid);
+
+    const single = selected.length === 1 ? selected[0] : null;
+    const detailStr = single ? fmtSessionDetails(single) : '';
 
     bar.style.display = '';
     bar.innerHTML = `
+      <button class="sel-close" onclick="clearSelection()" aria-label="Tøm valg">×</button>
       <div class="selection-stats">
-        ${selected.length} valgt · <strong>${totalHours.toFixed(1)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && hasPaid ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
+        ${selected.length} valgt · <strong>${totalHours.toFixed(1)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && selected.some(e => e.paid) ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
       </div>
       <div class="selection-actions">
-        ${selected.length === 1 ? '<button class="sel-btn" onclick="bulkEdit()">Endre</button>' : ''}
-        ${hasUnpaid ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>' : ''}
-        ${hasPaid ? '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>' : ''}
+        ${hasUnpaid
+          ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>'
+          : '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>'}
+        ${single ? '<button class="sel-btn" onclick="bulkEdit()">Endre</button>' : ''}
         <button class="sel-btn danger" onclick="bulkDelete()">Slett</button>
-        <button class="sel-btn" onclick="clearSelection()">Tøm valg</button>
-      </div>`;
+      </div>
+      ${detailStr ? `<div class="selection-details">${detailStr}</div>` : ''}`;
   }
 
   function bulkEdit() {
@@ -719,7 +777,7 @@
     saveLog(log);
     document.getElementById('manualHours').value = '';
     renderOversikt();
-    showToast(`Lagret · ${fmtKr(hours * wage)}`);
+    showToast(`Lagret · ${hours.toFixed(1)} t · ${fmtKr(hours * wage)}`);
   }
 
   function parseBatchHours() {
@@ -868,7 +926,7 @@
     document.getElementById('batchHours').value = '';
     document.getElementById('batchPreview').style.display = 'none';
     renderOversikt();
-    showToast(`Lagret · ${hours.length} ${hours.length === 1 ? 'økt' : 'økter'} · ${fmtKr(totalHours * wage)}`);
+    showToast(`Lagret · ${hours.length} ${hours.length === 1 ? 'økt' : 'økter'} · ${totalHours.toFixed(1)} t · ${fmtKr(totalHours * wage)}`);
   }
 
   // INIT
@@ -878,6 +936,9 @@
       const s = JSON.parse(localStorage.getItem(TIMER_KEY));
       if (!s) return;
       running = s.running; startTime = s.startTime; elapsed = s.elapsed; savedWage = s.savedWage || 200;
+      sessionStartAt = s.sessionStartAt || null;
+      pauses = s.pauses || [];
+      pauseStart = s.pauseStart || null;
       wageInput.value = savedWage;
       if (running) { applyRunningUI(); raf = requestAnimationFrame(tick); }
       else if (elapsed > 0) { applyStoppedUI(); renderTimer(elapsed); }
