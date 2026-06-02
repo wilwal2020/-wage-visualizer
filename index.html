@@ -157,6 +157,7 @@
     .log-main { grid-area: main; }
     .log-figures { grid-area: figures; justify-content: flex-end; gap: 22px; padding-top: 2px; }
     .log-date .d-month { display: block; }
+    .log-date .d-sep { display: none; }
     .log-hours, .log-earned { font-size: 22px; }
   }
 
@@ -624,7 +625,7 @@
     div.className = 'log-entry' + (e.paid ? ' paid' : '') + (isSelected ? ' selected' : '');
     const earned = e.hours * e.wage;
     const dateLabel = e.monthOnly
-      ? `${monthLabel(e.date)} · økt ${e.order}`
+      ? `<span class="d-day">${monthLabel(e.date)}</span><span class="d-sep"> · </span><span class="d-month">økt ${e.order}</span>`
       : fmtDate(e.date);
     div.onclick = () => toggleSelect(e.id);
     div.innerHTML = `
