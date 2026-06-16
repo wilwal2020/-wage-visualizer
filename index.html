@@ -830,8 +830,8 @@
       ? `<div class="edit-row"><label>Måned</label><div class="edit-locked">${monthLabel(e.date)} · økt ${e.order} (låst)</div></div>`
       : `<div class="edit-row"><label>Dato</label><input type="date" id="editDate" value="${e.date}"></div>`;
     const timeRows = e.startAt ? `
-      <div class="edit-row"><label>Start kl.</label><input type="time" id="editStart" value="${fmtTimeOfDay(e.startAt)}"></div>
-      <div class="edit-row"><label>Slutt kl.</label><input type="time" id="editEnd" value="${e.endAt ? fmtTimeOfDay(e.endAt) : ''}"></div>` : '';
+      <div class="edit-row"><label>Start kl.</label><input type="time" id="editStart" value="${fmtTimeOfDay(e.startAt)}" oninput="recomputeEditHours(${e.id})"></div>
+      <div class="edit-row"><label>Slutt kl.</label><input type="time" id="editEnd" value="${e.endAt ? fmtTimeOfDay(e.endAt) : ''}" oninput="recomputeEditHours(${e.id})"></div>` : '';
     div.innerHTML = `
       ${dateRow}
       ${timeRows}
@@ -843,6 +843,27 @@
         <button class="btn btn-reset" onclick="cancelEdit()">Avbryt</button>
       </div>`;
     return div;
+  }
+
+  function recomputeEditHours(id) {
+    const e = loadLog().find(x => x.id === id);
+    if (!e || !e.startAt) return;
+    const startInput = document.getElementById('editStart');
+    const endInput = document.getElementById('editEnd');
+    const hoursInput = document.getElementById('editHours');
+    if (!startInput || !endInput || !hoursInput) return;
+    if (!startInput.value || !endInput.value) return;
+    const [sH, sM] = startInput.value.split(':').map(Number);
+    const [eH, eM] = endInput.value.split(':').map(Number);
+    const baseStart = new Date(e.startAt);
+    baseStart.setHours(sH, sM, 0, 0);
+    const baseEnd = new Date(e.endAt || e.startAt);
+    baseEnd.setHours(eH, eM, 0, 0);
+    let durationMs = baseEnd.getTime() - baseStart.getTime();
+    if (durationMs < 0) durationMs += 86400000;
+    const pauseMs = (e.pauses || []).reduce((a, p) => a + (p.to - p.from), 0);
+    durationMs = Math.max(0, durationMs - pauseMs);
+    hoursInput.value = (durationMs / 3600000).toFixed(2);
   }
 
   function startEdit(id) { editingId = id; confirmDeleteId = null; renderOversikt(); }
