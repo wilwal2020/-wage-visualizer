@@ -95,6 +95,12 @@
   .progress-wrap { background: var(--panel); border: 1px solid var(--border); border-top: none; height: 4px; overflow: hidden; margin-bottom: 2px; }
   .progress-bar { height: 100%; width: 0%; background: var(--accent); transition: width 0.9s linear; box-shadow: 2px 0 8px var(--accent); }
 
+  .session-info-panel { background: var(--panel); border: 1px solid var(--border); border-top: none; padding: 14px; display: flex; align-items: center; justify-content: center; gap: 12px; margin-bottom: 2px; flex-wrap: wrap; }
+  .session-info-label { font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); }
+  .session-time-btn { background: transparent; border: 1px dashed var(--border); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 18px; letter-spacing: 0.1em; padding: 6px 14px; cursor: pointer; transition: border-color 0.15s, background 0.15s, border-style 0.15s; }
+  .session-time-btn:hover { border-color: var(--accent-dim); border-style: solid; background: rgba(200,245,66,0.05); }
+  .session-time-input { background: var(--bg); border: 1px solid var(--accent-dim); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 18px; padding: 5px 13px; outline: none; letter-spacing: 0.1em; }
+
   .time-section { background: var(--panel); border: 1px solid var(--border); border-top: none; display: grid; grid-template-columns: 1fr 1px 1fr 1px 1fr; margin-bottom: 2px; }
   .time-cell { padding: 16px 12px; text-align: center; }
   .time-divider { background: var(--border); }
@@ -270,6 +276,11 @@
       <div class="time-cell"><div class="time-value" id="timeS">00</div><div class="time-unit">Sekunder</div></div>
     </div>
 
+    <div class="session-info-panel" id="sessionInfo" style="display:none;">
+      <span class="session-info-label">Startet kl.</span>
+      <button class="session-time-btn" id="sessionTimeBtn" onclick="editSessionStart()">--:--</button>
+    </div>
+
     <div class="controls two" id="controls">
       <button class="btn btn-main" id="startStopBtn" onclick="toggleTimer()">START</button>
       <button class="btn btn-reset" onclick="resetTimer()">NULLSTILL</button>
@@ -319,6 +330,17 @@
       <button class="btn btn-save" onclick="saveBatch()">Lagre alle økter</button>
     </div>
 
+    <div class="section-title collapsible" id="backupToggle" onclick="toggleSection('backup')">
+      <span>Sikkerhetskopi</span>
+      <span class="chevron">+</span>
+    </div>
+    <div class="manual-form" id="backupForm" style="display:none;">
+      <div class="batch-hint">Last ned alle oppføringene som en fil. Hvis nettleseren tømmer data, du bytter enhet eller mister tilgang, kan du laste opp filen igjen for å gjenopprette.</div>
+      <button class="btn btn-save" type="button" onclick="exportData()">Last ned data</button>
+      <button class="btn btn-reset" type="button" onclick="document.getElementById('importInput').click()">Last opp data</button>
+      <input type="file" id="importInput" accept="application/json,.json" onchange="importData(this)" style="display:none;">
+    </div>
+
     <div class="section-title">Logg</div>
     <div class="selection-bar" id="selectionBar" style="display:none;"></div>
     <div class="log-list" id="logList"></div>
@@ -343,6 +365,8 @@
   let sessionStartAt = null;
   let pauses = [];
   let pauseStart = null;
+  let pendingReset = false;
+  let resetTimeoutHandle = null;
 
   const display = document.getElementById('display');
   const earnedAmount = document.getElementById('earnedAmount');
@@ -444,6 +468,7 @@
       running = true;
       startTime = now;
       applyRunningUI();
+      updateSessionInfo();
       saveTimerState();
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(tick);
@@ -454,6 +479,7 @@
       running = false;
       cancelAnimationFrame(raf);
       applyStoppedUI();
+      updateSessionInfo();
       renderTimer(elapsed);
       saveTimerState();
     }
@@ -477,12 +503,25 @@
       pauses: pauses.slice()
     });
     saveLog(log);
-    resetTimer();
+    doReset();
     renderOversikt();
     showToast(`Lagret · ${hours.toFixed(1)} t · ${fmtKr(earned)}`);
   }
 
   function resetTimer() {
+    if ((elapsed > 0 || sessionStartAt) && !pendingReset) {
+      pendingReset = true;
+      applyResetConfirmUI();
+      clearTimeout(resetTimeoutHandle);
+      resetTimeoutHandle = setTimeout(cancelReset, 5000);
+      return;
+    }
+    pendingReset = false;
+    clearTimeout(resetTimeoutHandle);
+    doReset();
+  }
+
+  function doReset() {
     running = false;
     cancelAnimationFrame(raf);
     elapsed = 0;
@@ -495,6 +534,77 @@
     renderTimer(0);
     earnedAmount.innerHTML = '0.0000<span class="nok-suffix">kr</span>';
     rateVal.textContent = '—';
+    updateSessionInfo();
+  }
+
+  function cancelReset() {
+    pendingReset = false;
+    clearTimeout(resetTimeoutHandle);
+    if (running) applyRunningUI();
+    else if (elapsed > 0) applyStoppedUI();
+    else applyIdleUI();
+  }
+
+  function applyResetConfirmUI() {
+    display.classList.remove('running');
+    earnedAmount.classList.remove('running');
+    controls.className = 'controls two';
+    controls.innerHTML = `
+      <button class="btn btn-main running" onclick="resetTimer()">BEKREFT NULLSTILL</button>
+      <button class="btn btn-reset" onclick="cancelReset()">AVBRYT</button>`;
+  }
+
+  function updateSessionInfo() {
+    const info = document.getElementById('sessionInfo');
+    if (!sessionStartAt) {
+      info.style.display = 'none';
+      return;
+    }
+    info.style.display = '';
+    info.innerHTML = `
+      <span class="session-info-label">Startet kl.</span>
+      <button class="session-time-btn" id="sessionTimeBtn" onclick="editSessionStart()">${fmtTimeOfDay(sessionStartAt)}</button>`;
+  }
+
+  function editSessionStart() {
+    if (!sessionStartAt) return;
+    const info = document.getElementById('sessionInfo');
+    const currentTime = fmtTimeOfDay(sessionStartAt);
+    info.innerHTML = `
+      <span class="session-info-label">Startet kl.</span>
+      <input type="time" class="session-time-input" id="sessionTimeInput" value="${currentTime}">`;
+    const input = document.getElementById('sessionTimeInput');
+    let committed = false;
+    const commit = () => {
+      if (committed) return;
+      committed = true;
+      const val = input.value;
+      if (val && val !== currentTime) {
+        const [hh, mm] = val.split(':').map(Number);
+        const d = new Date(sessionStartAt);
+        d.setHours(hh, mm, 0, 0);
+        let newStart = d.getTime();
+        if (newStart > Date.now()) {
+          d.setDate(d.getDate() - 1);
+          newStart = d.getTime();
+        }
+        if (newStart > Date.now()) {
+          showToast('Tiden kan ikke være i framtiden', 'warn');
+          updateSessionInfo();
+          return;
+        }
+        const delta = sessionStartAt - newStart;
+        sessionStartAt = newStart;
+        elapsed = Math.max(0, elapsed + delta);
+        saveTimerState();
+        renderTimer(currentElapsed());
+        showToast('Starttid oppdatert');
+      }
+      updateSessionInfo();
+    };
+    input.onblur = commit;
+    input.onkeydown = ev => { if (ev.key === 'Enter') input.blur(); else if (ev.key === 'Escape') { committed = true; updateSessionInfo(); } };
+    input.focus();
   }
 
   function switchTab(name) {
@@ -719,8 +829,12 @@
     const dateRow = e.monthOnly
       ? `<div class="edit-row"><label>Måned</label><div class="edit-locked">${monthLabel(e.date)} · økt ${e.order} (låst)</div></div>`
       : `<div class="edit-row"><label>Dato</label><input type="date" id="editDate" value="${e.date}"></div>`;
+    const timeRows = e.startAt ? `
+      <div class="edit-row"><label>Start kl.</label><input type="time" id="editStart" value="${fmtTimeOfDay(e.startAt)}"></div>
+      <div class="edit-row"><label>Slutt kl.</label><input type="time" id="editEnd" value="${e.endAt ? fmtTimeOfDay(e.endAt) : ''}"></div>` : '';
     div.innerHTML = `
       ${dateRow}
+      ${timeRows}
       <div class="edit-row"><label>Timer</label><input type="number" id="editHours" min="0" step="0.25" value="${e.hours.toFixed(2)}"></div>
       <div class="edit-row"><label>Timelønn</label><div class="edit-locked">${e.wage} kr/t (låst)</div></div>
       <div class="edit-row"><label>Utbetalt</label><label class="edit-paid-toggle"><input type="checkbox" id="editPaid" ${e.paid ? 'checked' : ''}> Markert som utbetalt</label></div>
@@ -744,6 +858,20 @@
       e.hours = Math.max(0, parseFloat(document.getElementById('editHours').value) || 0);
       const paidInput = document.getElementById('editPaid');
       if (paidInput) e.paid = paidInput.checked;
+      const startInput = document.getElementById('editStart');
+      if (startInput && startInput.value && e.startAt) {
+        const [hh, mm] = startInput.value.split(':').map(Number);
+        const d = new Date(e.startAt);
+        d.setHours(hh, mm, 0, 0);
+        e.startAt = d.getTime();
+      }
+      const endInput = document.getElementById('editEnd');
+      if (endInput && endInput.value && e.endAt) {
+        const [hh, mm] = endInput.value.split(':').map(Number);
+        const d = new Date(e.endAt);
+        d.setHours(hh, mm, 0, 0);
+        e.endAt = d.getTime();
+      }
       saveLog(log);
     }
     editingId = null;
@@ -800,6 +928,47 @@
     const totalDays = Math.round((end - start) / dayMs);
     const offset = Math.round(i * totalDays / (n - 1));
     return new Date(start.getTime() + offset * dayMs);
+  }
+
+  function exportData() {
+    const log = loadLog();
+    if (!log.length) { showToast('Ingen data å laste ned', 'warn'); return; }
+    const data = { version: 1, exportedAt: Date.now(), log };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `lonn-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    showToast(`${log.length} oppføringer eksportert`);
+  }
+
+  function importData(input) {
+    const file = input.files[0];
+    input.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result);
+        if (!Array.isArray(data.log)) throw new Error('Mangler log-array');
+        const current = loadLog();
+        const msg = current.length > 0
+          ? `Erstatt ${current.length} eksisterende oppføring${current.length === 1 ? '' : 'er'} med ${data.log.length} fra filen?`
+          : `Importer ${data.log.length} oppføring${data.log.length === 1 ? '' : 'er'}?`;
+        if (!confirm(msg)) return;
+        saveLog(data.log);
+        selectedIds.clear();
+        renderOversikt();
+        showToast(`${data.log.length} oppføringer importert`);
+      } catch (err) {
+        showToast('Kunne ikke lese fil', 'warn');
+      }
+    };
+    reader.readAsText(file);
   }
 
   function toggleSection(name) {
@@ -942,6 +1111,7 @@
       wageInput.value = savedWage;
       if (running) { applyRunningUI(); raf = requestAnimationFrame(tick); }
       else if (elapsed > 0) { applyStoppedUI(); renderTimer(elapsed); }
+      updateSessionInfo();
     } catch {}
   })();
   document.addEventListener('visibilitychange', () => {
