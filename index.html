@@ -722,7 +722,7 @@
     if (!threshold || threshold < 1) return hours;
     const whole = Math.floor(hours);
     const min = Math.round((hours - whole) * 60);
-    return min >= threshold ? whole + 1 : whole;
+    return min >= threshold ? whole + 1 : hours;
   }
 
   function setRoundThreshold(val) {
