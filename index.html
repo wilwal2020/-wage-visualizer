@@ -226,6 +226,13 @@
   .select-helper:hover { background: var(--accent-dim); color: #0a0c0f; }
   .selection-details { width: 100%; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); line-height: 1.6; padding-top: 4px; border-top: 1px solid var(--border); }
   .selection-details strong { color: var(--text); font-weight: normal; }
+  .round-control { width: 100%; display: flex; align-items: center; gap: 8px; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); padding-top: 6px; border-top: 1px solid var(--border); flex-wrap: wrap; }
+  .round-input { width: 56px; background: var(--bg); border: 1px solid var(--border); color: var(--accent); font-family: 'Share Tech Mono', monospace; font-size: 14px; padding: 5px 8px; text-align: center; outline: none; transition: border-color 0.15s; }
+  .round-input:focus { border-color: var(--accent-dim); }
+  .round-clear { display: none; background: transparent; border: 1px solid var(--border); color: var(--muted); padding: 4px 10px; font-family: 'Barlow Condensed', sans-serif; font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; cursor: pointer; line-height: 1; margin-left: auto; }
+  .round-clear:hover { color: var(--text); border-color: var(--muted); }
+  .round-control.active .round-clear { display: inline-block; }
+  .round-tag { color: var(--accent-dim); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; padding-left: 4px; }
 
   /* Edit paid toggle */
   .edit-paid-toggle { display: flex; align-items: center; gap: 8px; font-family: 'Barlow Condensed', sans-serif; font-size: 14px; color: var(--text); cursor: pointer; padding: 6px 0; }
@@ -369,6 +376,7 @@
   let pauseStart = null;
   let pendingReset = false;
   let resetTimeoutHandle = null;
+  let roundThreshold = 0;
 
   const display = document.getElementById('display');
   const earnedAmount = document.getElementById('earnedAmount');
@@ -710,36 +718,78 @@
     return parts.join(' · ');
   }
 
+  function applyRounding(hours, threshold) {
+    if (!threshold || threshold < 1) return hours;
+    const whole = Math.floor(hours);
+    const min = Math.round((hours - whole) * 60);
+    return min >= threshold ? whole + 1 : whole;
+  }
+
+  function setRoundThreshold(val) {
+    const n = parseInt(val, 10);
+    roundThreshold = isNaN(n) ? 0 : Math.max(0, Math.min(59, n));
+    updateSelectionStats();
+    const ctrl = document.querySelector('.round-control');
+    if (ctrl) ctrl.classList.toggle('active', roundThreshold > 0);
+  }
+
+  function clearRoundThreshold() {
+    const input = document.querySelector('.round-input');
+    if (input) input.value = '0';
+    setRoundThreshold(0);
+  }
+
+  function updateSelectionStats() {
+    const stats = document.querySelector('.selection-stats');
+    if (!stats) return;
+    const log = loadLog();
+    const selected = log.filter(e => selectedIds.has(e.id));
+    if (selected.length === 0) return;
+    const effHours = selected.reduce((a, e) => a + applyRounding(e.hours, roundThreshold), 0);
+    const effKr = selected.reduce((a, e) => a + applyRounding(e.hours, roundThreshold) * e.wage, 0);
+    const unpaidKr = selected.filter(e => !e.paid).reduce((a, e) => a + applyRounding(e.hours, roundThreshold) * e.wage, 0);
+    const hasUnpaid = selected.some(e => !e.paid);
+    const hasPaid = selected.some(e => e.paid);
+    stats.innerHTML = `${selected.length} valgt · <strong>${effHours.toFixed(1)} t</strong> · <strong>${fmtKr(effKr)}</strong>${roundThreshold > 0 ? '<span class="round-tag">avrundet</span>' : ''}${hasUnpaid && hasPaid ? ` · ${fmtKr(unpaidKr)} utestående` : ''}`;
+  }
+
   function renderSelectionBar(log) {
     const bar = document.getElementById('selectionBar');
     document.body.classList.toggle('has-selection', selectedIds.size > 0);
-    if (selectedIds.size === 0) { bar.style.display = 'none'; return; }
+    if (selectedIds.size === 0) { roundThreshold = 0; bar.style.display = 'none'; return; }
     const selected = log.filter(e => selectedIds.has(e.id));
-    const totalHours = selected.reduce((a, e) => a + e.hours, 0);
-    const totalKr = selected.reduce((a, e) => a + e.hours * e.wage, 0);
-    const unpaidKr = selected.filter(e => !e.paid).reduce((a, e) => a + e.hours * e.wage, 0);
+    const effHours = selected.reduce((a, e) => a + applyRounding(e.hours, roundThreshold), 0);
+    const effKr = selected.reduce((a, e) => a + applyRounding(e.hours, roundThreshold) * e.wage, 0);
+    const unpaidKr = selected.filter(e => !e.paid).reduce((a, e) => a + applyRounding(e.hours, roundThreshold) * e.wage, 0);
     const hasUnpaid = selected.some(e => !e.paid);
 
     const single = selected.length === 1 ? selected[0] : null;
     const detailStr = single ? fmtSessionDetails(single) : '';
     const anyUnpaidInLog = log.some(e => !e.paid);
     const allUnpaidSelected = anyUnpaidInLog && log.filter(e => !e.paid).every(e => selectedIds.has(e.id));
+    const roundActive = roundThreshold > 0;
 
     bar.style.display = '';
     bar.innerHTML = `
       ${anyUnpaidInLog && !allUnpaidSelected ? '<button class="select-helper" onclick="selectAllUnpaid()">Velg alle ubetalte</button>' : ''}
       <button class="sel-close" onclick="clearSelection()" aria-label="Tøm valg">×</button>
       <div class="selection-stats">
-        ${selected.length} valgt · <strong>${totalHours.toFixed(1)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && selected.some(e => e.paid) ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
+        ${selected.length} valgt · <strong>${effHours.toFixed(1)} t</strong> · <strong>${fmtKr(effKr)}</strong>${roundActive ? '<span class="round-tag">avrundet</span>' : ''}${hasUnpaid && selected.some(e => e.paid) ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
       </div>
       <div class="selection-actions">
         ${hasUnpaid
           ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>'
           : '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>'}
         ${single ? '<button class="sel-btn" onclick="bulkEdit()">Endre</button>' : ''}
-        ${selected.length >= 2 ? '<button class="sel-btn" onclick="bulkRoundUp()">Rund av</button>' : ''}
         <button class="sel-btn danger" onclick="bulkDelete()">Slett</button>
       </div>
+      ${selected.length >= 2 ? `
+        <div class="round-control${roundActive ? ' active' : ''}">
+          <span>Rund opp ved ≥</span>
+          <input type="number" class="round-input" min="0" max="59" value="${roundThreshold}" oninput="setRoundThreshold(this.value)" onblur="this.value=roundThreshold">
+          <span>min</span>
+          <button class="round-clear" onclick="clearRoundThreshold()">Nullstill</button>
+        </div>` : ''}
       ${detailStr ? `<div class="selection-details">${detailStr}</div>` : ''}`;
   }
 
@@ -796,26 +846,6 @@
     });
     refreshSelectionUI();
     if (selectedIds.size === 0) showToast('Ingen ubetalte sesjoner', 'warn');
-  }
-
-  function bulkRoundUp() {
-    if (selectedIds.size < 2) return;
-    const input = prompt('Rund opp til hel time hvis minuttene er ≥ (1–59):', '30');
-    if (input === null) return;
-    const threshold = parseInt(input, 10);
-    if (isNaN(threshold) || threshold < 1 || threshold > 59) { showToast('Ugyldig terskel', 'warn'); return; }
-    const log = loadLog();
-    let changed = 0;
-    log.forEach(e => {
-      if (!selectedIds.has(e.id)) return;
-      const whole = Math.floor(e.hours);
-      const remainingMin = Math.round((e.hours - whole) * 60);
-      const newHours = remainingMin >= threshold ? whole + 1 : whole;
-      if (newHours !== e.hours) { e.hours = newHours; changed++; }
-    });
-    saveLog(log);
-    renderOversikt();
-    showToast(changed ? `${changed} avrundet (≥${threshold} min)` : 'Ingen endring');
   }
 
   function bulkDelete() {
