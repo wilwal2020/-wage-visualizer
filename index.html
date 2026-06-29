@@ -720,6 +720,8 @@
 
     const single = selected.length === 1 ? selected[0] : null;
     const detailStr = single ? fmtSessionDetails(single) : '';
+    const anyUnpaidInLog = log.some(e => !e.paid);
+    const allUnpaidSelected = anyUnpaidInLog && log.filter(e => !e.paid).every(e => selectedIds.has(e.id));
 
     bar.style.display = '';
     bar.innerHTML = `
@@ -728,6 +730,7 @@
         ${selected.length} valgt · <strong>${totalHours.toFixed(1)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && selected.some(e => e.paid) ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
       </div>
       <div class="selection-actions">
+        ${anyUnpaidInLog && !allUnpaidSelected ? '<button class="sel-btn" onclick="selectAllUnpaid()">Velg alle ubetalte</button>' : ''}
         ${hasUnpaid
           ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>'
           : '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>'}
@@ -779,6 +782,18 @@
     saveLog(log);
     renderOversikt();
     showToast(`${count} ${count === 1 ? 'oppføring' : 'oppføringer'} ${paid ? 'utbetalt' : 'ikke utbetalt'}`);
+  }
+
+  function selectAllUnpaid() {
+    const log = loadLog();
+    selectedIds.clear();
+    log.forEach(e => { if (!e.paid) selectedIds.add(e.id); });
+    document.querySelectorAll('.log-entry').forEach(el => {
+      const id = parseInt(el.dataset.id, 10);
+      el.classList.toggle('selected', selectedIds.has(id));
+    });
+    refreshSelectionUI();
+    if (selectedIds.size === 0) showToast('Ingen ubetalte sesjoner', 'warn');
   }
 
   function bulkRoundUp() {
