@@ -222,6 +222,8 @@
   .sel-btn.danger:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
   .sel-close { position: absolute; top: 8px; right: 10px; background: transparent; border: none; color: var(--muted); font-family: 'Barlow Condensed', sans-serif; font-size: 22px; line-height: 1; padding: 4px 10px; cursor: pointer; transition: color 0.15s; }
   .sel-close:hover { color: var(--text); }
+  .select-helper { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 8px; background: var(--panel); border: 1px solid var(--accent-dim); color: var(--accent-dim); font-family: 'Barlow Condensed', sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; padding: 9px 16px; cursor: pointer; white-space: nowrap; transition: background 0.15s, color 0.15s; box-shadow: 0 6px 20px rgba(0,0,0,0.4); }
+  .select-helper:hover { background: var(--accent-dim); color: #0a0c0f; }
   .selection-details { width: 100%; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--muted); line-height: 1.6; padding-top: 4px; border-top: 1px solid var(--border); }
   .selection-details strong { color: var(--text); font-weight: normal; }
 
@@ -725,12 +727,12 @@
 
     bar.style.display = '';
     bar.innerHTML = `
+      ${anyUnpaidInLog && !allUnpaidSelected ? '<button class="select-helper" onclick="selectAllUnpaid()">Velg alle ubetalte</button>' : ''}
       <button class="sel-close" onclick="clearSelection()" aria-label="Tøm valg">×</button>
       <div class="selection-stats">
         ${selected.length} valgt · <strong>${totalHours.toFixed(1)} t</strong> · <strong>${fmtKr(totalKr)}</strong>${hasUnpaid && selected.some(e => e.paid) ? ` · ${fmtKr(unpaidKr)} utestående` : ''}
       </div>
       <div class="selection-actions">
-        ${anyUnpaidInLog && !allUnpaidSelected ? '<button class="sel-btn" onclick="selectAllUnpaid()">Velg alle ubetalte</button>' : ''}
         ${hasUnpaid
           ? '<button class="sel-btn primary" onclick="bulkMarkPaid(true)">Marker utbetalt</button>'
           : '<button class="sel-btn" onclick="bulkMarkPaid(false)">Marker ikke utbetalt</button>'}
